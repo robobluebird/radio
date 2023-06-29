@@ -32,6 +32,10 @@ byte s6;
 byte ls6 = HIGH;
 unsigned long ld6 = 0;
 
+byte s7;
+byte ls7 = HIGH;
+unsigned long ld7 = 0;
+
 byte s5;
 byte ls5 = HIGH;
 unsigned long ld5 = 0;
@@ -58,6 +62,11 @@ int drum_pitch = 440;
 uint16_t drum_index, drum_window_start, drum_window_end;
 int drum_sample;
 uint32_t drum_accumulator;
+
+int delay_sample;
+byte delay_buffer[500];
+uint16_t delay_buffer_index;
+byte delay_active;
 
 const byte sine_table[] PROGMEM =
 { 128,131,134,137,140,143,146,149,152,155,158,162,165,167,170,173,176,179,182,185,188,190,193,196,198,201,203,206,208,211,213,215,218,220,222,224,
@@ -122,10 +131,15 @@ const byte drum_table[] PROGMEM =
 126,126,126,126,126,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,126,126,126,126,126,126,126,126,126,126,126,126,126,
 126,126,126,126,126,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127};
 
-int drum_length = 2052;
+uint16_t drum_length = 2052;
 
 void setup(void) {
   Serial.begin(9600);
+
+  int i;
+  for (i = 0; i < 500; i++) {
+    delay_buffer[i] = 0;
+  }
 
   cli();
 
@@ -134,6 +148,7 @@ void setup(void) {
   pinMode(4, INPUT_PULLUP);
   pinMode(5, INPUT_PULLUP);
   pinMode(6, INPUT_PULLUP);
+  pinMode(7, INPUT_PULLUP);
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
@@ -156,8 +171,8 @@ ISR(TIMER2_COMPA_vect) {
   OCR2A = 50;
 
   if (!s5_continuous && s5_trigger) {
-    drum_index = 0;
-    drum_accumulator = 0;
+    drum_index = drum_window_start;
+    drum_accumulator = drum_window_start;
     s5_latch = 1;
     s5_trigger = 0;
   }
@@ -165,12 +180,13 @@ ISR(TIMER2_COMPA_vect) {
   sine_sample1 = (((pgm_read_byte(&sine_table[sine_index1]) - 127) * amplitude) >> 8) * !s2;
   sine_sample2 = (((pgm_read_byte(&sine_table[sine_index2]) - 127) * amplitude) >> 8) * !s3;
   sine_sample3 = (((pgm_read_byte(&sine_table[sine_index3]) - 127) * amplitude) >> 8) * !s4;
-  drum_sample = ((pgm_read_byte(&drum_table[drum_index])) - 127) * (s5_latch || (s5_continuous && !s5));
+  drum_sample =    (pgm_read_byte(&drum_table[drum_index]) - 127) * (s5_latch || (s5_continuous && !s5));
+  delay_sample = delay_buffer[delay_buffer_index] * delay_active;
 
-  sample_out_temp = ((sine_sample1 + sine_sample2 + sine_sample3 + drum_sample) >> 1) + 127;
+  sample_out_temp = ((sine_sample1 + sine_sample2 + sine_sample3 + drum_sample + delay_sample) >> 1) + 127;
 
   if (sample_out_temp > 255) {
-    sample_out_temp -= (sample_out_temp - 255) << 1; //fold don't clip!
+    sample_out_temp -= (sample_out_temp - 255) << 1;
   }
 
   if (sample_out_temp < 0) {
@@ -185,6 +201,8 @@ ISR(TIMER2_COMPA_vect) {
   SPI.transfer(dac_out & 255);
   digitalWrite(10, HIGH);
 
+  delay_buffer[delay_buffer_index] = (sample_out >> 1);
+
   sine_accumulator1 += sine_pitch1 << 2;
   sine_index1 = (dds_tune * sine_accumulator1) >> (32 - 8);
 
@@ -194,24 +212,19 @@ ISR(TIMER2_COMPA_vect) {
   sine_accumulator3 += sine_pitch3 << 2;
   sine_index3 = (dds_tune * sine_accumulator3) >> (32 - 8);
 
-  if (s5_continuous) {
+  if (s5_continuous || s5_latch) {
     drum_accumulator += drum_pitch >> 3;
     drum_index = (drum_accumulator >> (6));
 
     if (drum_index > drum_window_end) {
       drum_index = drum_window_start;
       drum_accumulator = drum_window_start;
-    }
-  } else if (s5_latch) {
-    drum_accumulator += drum_pitch >> 3;
-    drum_index = (drum_accumulator >> (6));
-    
-    if (drum_index > drum_length) {
-      drum_index = 0;
-      drum_accumulator = 0;
       s5_latch = 0;
     }
   }
+
+  delay_buffer_index++;
+  if (delay_buffer_index == 500) delay_buffer_index = 0;
 }
 
 void loop(void) {
@@ -220,21 +233,31 @@ void loop(void) {
   byte d4 = digitalRead(4);
   byte d5 = digitalRead(5);
   byte d6 = digitalRead(6);
+  byte d7 = digitalRead(7);
 
   // analogRead should be able to do 0-1023 for values
   // but my potentiometers only get up to ~855
   drum_window_start = map(analogRead(A0), 0, 855, 0, drum_length);
-  drum_window_end = map(analogRead(A1), 0, 855, 0, drum_length);
+  drum_window_end   = map(analogRead(A1), 0, 855, 0, drum_length);
+  // drum_delay        = map(analogRead(A2), 0, 855, 0, drum_length);
 
   if (d2 == ls2) ld2 = millis();
   if (d3 == ls3) ld3 = millis();
   if (d4 == ls4) ld4 = millis();
   if (d5 == ls5) ld5 = millis();
   if (d6 == ls6) ld6 = millis();
+  if (d7 == ls7) ld7 = millis();
 
   if (d2 != ls2 && (millis() - ld2) > debounceDelay) s2 = d2;
   if (d3 != ls3 && (millis() - ld3) > debounceDelay) s3 = d3;
   if (d4 != ls4 && (millis() - ld4) > debounceDelay) s4 = d4;
+  if (d7 != ls7 && (millis() - ld7) > debounceDelay) {
+    s7 = d7;
+
+    if (!s7) {
+      delay_active = !delay_active;
+    }
+  }
 
   if (d5 != ls5 && (millis() - ld5) > debounceDelay) {
     s5 = d5;
@@ -246,8 +269,8 @@ void loop(void) {
 
     if (!s6) {
       s5_continuous = !s5_continuous;
-      drum_index = 0;
-      drum_accumulator = 0;
+      drum_index = drum_window_start;
+      drum_accumulator = drum_window_start;
     }
   }
   
@@ -256,4 +279,5 @@ void loop(void) {
   ls4 = s4;
   ls5 = s5;
   ls6 = s6;
+  ls7 = s7;
 }
