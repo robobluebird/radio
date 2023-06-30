@@ -16,17 +16,21 @@
 | C  261.63
 ------------*/
 
-byte s2;
+byte s2, s2_trigger, s2_latch;
 byte ls2 = HIGH;
 unsigned long ld2 = 0;
 
-byte s3;
+byte s3, s3_trigger, s3_latch;
 byte ls3 = HIGH;
 unsigned long ld3 = 0;
 
-byte s4;
+byte s4, s4_trigger, s4_latch;
 byte ls4 = HIGH;
 unsigned long ld4 = 0;
+
+byte s5, s5_trigger, s5_latch;
+byte ls5 = HIGH;
+unsigned long ld5 = 0;
 
 byte s6;
 byte ls6 = HIGH;
@@ -36,10 +40,7 @@ byte s7;
 byte ls7 = HIGH;
 unsigned long ld7 = 0;
 
-byte s5;
-byte ls5 = HIGH;
-unsigned long ld5 = 0;
-byte s5_trigger, s5_latch, s5_continuous;
+byte continuous;
 
 const unsigned long debounceDelay = 50;
 
@@ -49,34 +50,22 @@ uint32_t dds_time;
 int sample_out_temp;
 byte sample_out;
 
-byte amplitude = 100;
+byte pitch = 70;
+byte second_interval = round(pitch * 1.059463);
+byte third_interval = round(pitch * 1.122462);
+byte fourth_interval = round(pitch * 1.189207);
+byte fifth_interval = round(pitch * 1.259921);
 
-int sine_pitch1 = 131;
-int sine_pitch2 = 165;
-int sine_pitch3 = 196;
-int sine_sample1, sine_sample2, sine_sample3;
-byte sine_index1, sine_index2, sine_index3;
-uint32_t sine_accumulator1, sine_accumulator2, sine_accumulator3;
-
-int drum_pitch = 440;
-uint16_t drum_index, drum_window_start, drum_window_end;
-int drum_sample;
-uint32_t drum_accumulator;
+uint16_t index1, index2, index3, index4, window_start, window_end;
+int sample1, sample2, sample3, sample4;
+uint32_t accumulator1, accumulator2, accumulator3, accumulator4;
 
 int delay_sample;
 byte delay_buffer[500];
 uint16_t delay_buffer_index;
 byte delay_active;
 
-const byte sine_table[] PROGMEM =
-{ 128,131,134,137,140,143,146,149,152,155,158,162,165,167,170,173,176,179,182,185,188,190,193,196,198,201,203,206,208,211,213,215,218,220,222,224,
-226,228,230,232,234,235,237,238,240,241,243,244,245,246,248,249,250,250,251,252,253,253,254,254,254,255,255,255,255,255,255,255,254,254,254,253,253,
-252,251,250,250,249,248,246,245,244,243,241,240,238,237,235,234,232,230,228,226,224,222,220,218,215,213,211,208,206,203,201,198,196,193,190,188,185,
-182,179,176,173,170,167,165,162,158,155,152,149,146,143,140,137,134,131,128,124,121,118,115,112,109,106,103,100,97,93,90,88,85,82,79,76,73,70,67,65,
-62,59,57,54,52,49,47,44,42,40,37,35,33,31,29,27,25,23,21,20,18,17,15,14,12,11,10,9,7,6,5,5,4,3,2,2,1,1,1,0,0,0,0,0,0,0,1,1,1,2,2,3,4,5,5,6,7,9,10,11,
-12,14,15,17,18,20,21,23,25,27,29,31,33,35,37,40,42,44,47,49,52,54,57,59,62,65,67,70,73,76,79,82,85,88,90,93,97,100,103,106,109,112,115,118,121,124 };
-
-const byte drum_table[] PROGMEM =
+const byte sample_table[] PROGMEM =
 { 128,127,130,128,131,129,136,141,182,240,246,246,243,244,238,241,229,237,102,-6,11,-2,7,1,6,2,6,5,8,8,11,13,14,17,18,21,22,26,28,33,36,45,54,70,94,
 127,168,206,223,233,238,244,244,245,248,249,253,253,252,251,252,251,251,250,248,246,245,242,240,238,236,234,232,229,226,222,216,208,196,176,147,113,
 74,44,30,24,17,13,10,7,4,3,2,2,6,4,3,4,4,4,5,6,7,9,11,12,14,16,18,20,23,26,29,35,44,58,83,115,149,186,212,224,231,235,239,239,240,241,242,243,244,
@@ -131,7 +120,7 @@ const byte drum_table[] PROGMEM =
 126,126,126,126,126,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,126,126,126,126,126,126,126,126,126,126,126,126,126,
 126,126,126,126,126,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127};
 
-uint16_t drum_length = 2052;
+uint16_t sample_length = 2052;
 
 void setup(void) {
   Serial.begin(9600);
@@ -170,20 +159,42 @@ ISR(TIMER2_COMPA_vect) {
 
   OCR2A = 50;
 
-  if (!s5_continuous && s5_trigger) {
-    drum_index = drum_window_start;
-    drum_accumulator = drum_window_start;
+  if (!continuous && s2_trigger) {
+    index1 = window_start;
+    accumulator1 = window_start;
+    s2_latch = 1;
+    s2_trigger = 0;
+  }
+
+  if (!continuous && s3_trigger) {
+    index2 = window_start;
+    accumulator2 = window_start;
+    s3_latch = 1;
+    s3_trigger = 0;
+  }
+
+  if (!continuous && s4_trigger) {
+    index3 = window_start;
+    accumulator3 = window_start;
+    s4_latch = 1;
+    s4_trigger = 0;
+  }
+
+  if (!continuous && s5_trigger) {
+    index4 = window_start;
+    accumulator4 = window_start;
     s5_latch = 1;
     s5_trigger = 0;
   }
 
-  sine_sample1 = (((pgm_read_byte(&sine_table[sine_index1]) - 127) * amplitude) >> 8) * !s2;
-  sine_sample2 = (((pgm_read_byte(&sine_table[sine_index2]) - 127) * amplitude) >> 8) * !s3;
-  sine_sample3 = (((pgm_read_byte(&sine_table[sine_index3]) - 127) * amplitude) >> 8) * !s4;
-  drum_sample =    (pgm_read_byte(&drum_table[drum_index]) - 127) * (s5_latch || (s5_continuous && !s5));
+  sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s2_latch || (continuous && !s2));
+  sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s3_latch || (continuous && !s3));
+  sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s4_latch || (continuous && !s4));
+  sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s5_latch || (continuous && !s5));
+  
   delay_sample = delay_buffer[delay_buffer_index] * delay_active;
 
-  sample_out_temp = ((sine_sample1 + sine_sample2 + sine_sample3 + drum_sample + delay_sample) >> 1) + 127;
+  sample_out_temp = ((sample1 + sample2 + sample3 + sample4 + delay_sample) >> 1) + 127;
 
   if (sample_out_temp > 255) {
     sample_out_temp -= (sample_out_temp - 255) << 1;
@@ -203,22 +214,46 @@ ISR(TIMER2_COMPA_vect) {
 
   delay_buffer[delay_buffer_index] = (sample_out >> 1);
 
-  sine_accumulator1 += sine_pitch1 << 2;
-  sine_index1 = (dds_tune * sine_accumulator1) >> (32 - 8);
+  if (continuous || s2_latch) {
+    accumulator1 += pitch;
+    index1 = (accumulator1 >> (6));
 
-  sine_accumulator2 += sine_pitch2 << 2;
-  sine_index2 = (dds_tune * sine_accumulator2) >> (32 - 8);
+    if (index1 > window_end) {
+      index1 = window_start;
+      accumulator1 = window_start;
+      s2_latch = 0;
+    }
+  }
 
-  sine_accumulator3 += sine_pitch3 << 2;
-  sine_index3 = (dds_tune * sine_accumulator3) >> (32 - 8);
+    if (continuous || s3_latch) {
+    accumulator2 += second_interval;
+    index2 = (accumulator2 >> (6));
 
-  if (s5_continuous || s5_latch) {
-    drum_accumulator += drum_pitch >> 3;
-    drum_index = (drum_accumulator >> (6));
+    if (index2 > window_end) {
+      index2 = window_start;
+      accumulator2 = window_start;
+      s3_latch = 0;
+    }
+  }
 
-    if (drum_index > drum_window_end) {
-      drum_index = drum_window_start;
-      drum_accumulator = drum_window_start;
+  if (continuous || s4_latch) {
+    accumulator3 += third_interval;
+    index3 = (accumulator3 >> (6));
+
+    if (index3 > window_end) {
+      index3 = window_start;
+      accumulator3 = window_start;
+      s4_latch = 0;
+    }
+  }
+
+  if (continuous || s5_latch) {
+    accumulator4 += fourth_interval;
+    index4 = (accumulator4 >> (6));
+
+    if (index4 > window_end) {
+      index4 = window_start;
+      accumulator4 = window_start;
       s5_latch = 0;
     }
   }
@@ -237,9 +272,8 @@ void loop(void) {
 
   // analogRead should be able to do 0-1023 for values
   // but my potentiometers only get up to ~855
-  drum_window_start = map(analogRead(A0), 0, 855, 0, drum_length);
-  drum_window_end   = map(analogRead(A1), 0, 855, 0, drum_length);
-  // drum_delay        = map(analogRead(A2), 0, 855, 0, drum_length);
+  window_start = map(analogRead(A0), 0, 855, 0, sample_length);
+  window_end   = map(analogRead(A1), 0, 855, 0, sample_length);
 
   if (d2 == ls2) ld2 = millis();
   if (d3 == ls3) ld3 = millis();
@@ -248,15 +282,19 @@ void loop(void) {
   if (d6 == ls6) ld6 = millis();
   if (d7 == ls7) ld7 = millis();
 
-  if (d2 != ls2 && (millis() - ld2) > debounceDelay) s2 = d2;
-  if (d3 != ls3 && (millis() - ld3) > debounceDelay) s3 = d3;
-  if (d4 != ls4 && (millis() - ld4) > debounceDelay) s4 = d4;
-  if (d7 != ls7 && (millis() - ld7) > debounceDelay) {
-    s7 = d7;
+  if (d2 != ls2 && (millis() - ld2) > debounceDelay) {
+    s2 = d2;
+    s2_trigger = !s2 && ls2;
+  }
 
-    if (!s7) {
-      delay_active = !delay_active;
-    }
+  if (d3 != ls3 && (millis() - ld3) > debounceDelay) {
+    s3 = d3;
+    s3_trigger = !s3 && ls3;
+  }
+
+  if (d4 != ls4 && (millis() - ld4) > debounceDelay) {
+    s4 = d4;
+    s4_trigger = !s4 && ls4;
   }
 
   if (d5 != ls5 && (millis() - ld5) > debounceDelay) {
@@ -268,9 +306,24 @@ void loop(void) {
     s6 = d6;
 
     if (!s6) {
-      s5_continuous = !s5_continuous;
-      drum_index = drum_window_start;
-      drum_accumulator = drum_window_start;
+      continuous = !continuous;
+      index1 = window_start;
+      index2 = window_start;
+      index3 = window_start;
+      index4 = window_start;
+
+      accumulator1 = window_start;
+      accumulator2 = window_start;
+      accumulator3 = window_start;
+      accumulator4 = window_start;
+    }
+  }
+
+  if (d7 != ls7 && (millis() - ld7) > debounceDelay) {
+    s7 = d7;
+
+    if (!s7) {
+      delay_active = !delay_active;
     }
   }
   
