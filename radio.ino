@@ -1,20 +1,8 @@
 #include <SPI.h>
 
-/*----------
-| C  130.81
-| C# 138.59
-| D  146.83
-| D# 155.56
-| E  164.81
-| F  174.61
-| F# 185.00
-| G  196.00
-| G# 207.65
-| A  220.00
-| A# 233.08
-| B  246.94
-| C  261.63
-------------*/
+byte s1, s1_trigger, s1_latch;
+byte ls1 = HIGH;
+unsigned long ld1 = 0;
 
 byte s2, s2_trigger, s2_latch;
 byte ls2 = HIGH;
@@ -51,17 +39,25 @@ int sample_out_temp;
 byte sample_out;
 
 byte pitch = 70;
-byte second_interval = round(pitch * 1.059463);
-byte third_interval = round(pitch * 1.122462);
-byte fourth_interval = round(pitch * 1.189207);
-byte fifth_interval = round(pitch * 1.259921);
+byte minor_second = round(pitch * 1.059463);
+byte major_second = round(pitch * 1.122462);
+byte minor_third = round(pitch * 1.189207);
+byte major_third = round(pitch * 1.259921);
+byte perfect_fourth = round(pitch * 1.334840);
+byte tritone = round(pitch * 1.414214);
+byte perfect_fifth = round(pitch * 1.498307);
+byte minor_sixth = round(pitch * 1.587401);
+byte major_sixth = round(pitch * 1.681793);
+byte minor_seventh = round(pitch * 1.781797);
+byte major_seventh = round(pitch * 1.887749);
+byte octave = round(pitch * 2.0);
 
-uint16_t index1, index2, index3, index4, window_start, window_end;
-int sample1, sample2, sample3, sample4;
-uint32_t accumulator1, accumulator2, accumulator3, accumulator4;
+uint16_t index1, index2, index3, index4, index5, window_start, window_end;
+int sample1, sample2, sample3, sample4, sample5;
+uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5;
 
 int delay_sample;
-byte delay_buffer[500];
+byte delay_buffer[600];
 uint16_t delay_buffer_index;
 byte delay_active;
 
@@ -126,7 +122,7 @@ void setup(void) {
   Serial.begin(9600);
 
   int i;
-  for (i = 0; i < 500; i++) {
+  for (i = 0; i < 600; i++) {
     delay_buffer[i] = 0;
   }
 
@@ -138,6 +134,7 @@ void setup(void) {
   pinMode(5, INPUT_PULLUP);
   pinMode(6, INPUT_PULLUP);
   pinMode(7, INPUT_PULLUP);
+  pinMode(8, INPUT_PULLUP);
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
@@ -158,43 +155,51 @@ ISR(TIMER2_COMPA_vect) {
   dds_time++;
 
   OCR2A = 50;
-
-  if (!continuous && s2_trigger) {
+  
+  if (!continuous && s1_trigger) {
     index1 = window_start;
     accumulator1 = window_start;
+    s1_latch = 1;
+    s1_trigger = 0;
+  }
+
+  if (!continuous && s2_trigger) {
+    index2 = window_start;
+    accumulator2 = window_start;
     s2_latch = 1;
     s2_trigger = 0;
   }
 
   if (!continuous && s3_trigger) {
-    index2 = window_start;
-    accumulator2 = window_start;
+    index3 = window_start;
+    accumulator3 = window_start;
     s3_latch = 1;
     s3_trigger = 0;
   }
 
   if (!continuous && s4_trigger) {
-    index3 = window_start;
-    accumulator3 = window_start;
+    index4 = window_start;
+    accumulator4 = window_start;
     s4_latch = 1;
     s4_trigger = 0;
   }
 
   if (!continuous && s5_trigger) {
-    index4 = window_start;
-    accumulator4 = window_start;
+    index5 = window_start;
+    accumulator5 = window_start;
     s5_latch = 1;
     s5_trigger = 0;
   }
 
-  sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s2_latch || (continuous && !s2));
-  sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s3_latch || (continuous && !s3));
-  sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s4_latch || (continuous && !s4));
-  sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s5_latch || (continuous && !s5));
+  sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s1_latch || (continuous && !s1));
+  sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s2_latch || (continuous && !s2));
+  sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
+  sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s4_latch || (continuous && !s4));
+  sample5 = (pgm_read_byte(&sample_table[index5]) - 127) * (s5_latch || (continuous && !s5));
   
   delay_sample = delay_buffer[delay_buffer_index] * delay_active;
 
-  sample_out_temp = ((sample1 + sample2 + sample3 + sample4 + delay_sample) >> 1) + 127;
+  sample_out_temp = ((sample1 + sample2 + sample3 + sample4 + sample5 + delay_sample) >> 1) + 127;
 
   if (sample_out_temp > 255) {
     sample_out_temp -= (sample_out_temp - 255) << 1;
@@ -214,73 +219,91 @@ ISR(TIMER2_COMPA_vect) {
 
   delay_buffer[delay_buffer_index] = (sample_out >> 1);
 
-  if (continuous || s2_latch) {
+  if (continuous || s1_latch) {
     accumulator1 += pitch;
     index1 = (accumulator1 >> (6));
 
     if (index1 > window_end) {
       index1 = window_start;
       accumulator1 = window_start;
-      s2_latch = 0;
+      s1_latch = 0;
     }
   }
 
-    if (continuous || s3_latch) {
-    accumulator2 += second_interval;
+  if (continuous || s2_latch) {
+    accumulator2 += minor_second;
     index2 = (accumulator2 >> (6));
 
     if (index2 > window_end) {
       index2 = window_start;
       accumulator2 = window_start;
-      s3_latch = 0;
+      s2_latch = 0;
     }
   }
 
-  if (continuous || s4_latch) {
-    accumulator3 += third_interval;
+  if (continuous || s3_latch) {
+    accumulator3 += major_second;
     index3 = (accumulator3 >> (6));
 
     if (index3 > window_end) {
       index3 = window_start;
       accumulator3 = window_start;
-      s4_latch = 0;
+      s3_latch = 0;
     }
   }
 
-  if (continuous || s5_latch) {
-    accumulator4 += fourth_interval;
+  if (continuous || s4_latch) {
+    accumulator4 += minor_third;
     index4 = (accumulator4 >> (6));
 
     if (index4 > window_end) {
       index4 = window_start;
       accumulator4 = window_start;
+      s4_latch = 0;
+    }
+  }
+
+  if (continuous || s5_latch) {
+    accumulator5 += major_third;
+    index5 = (accumulator5 >> (6));
+
+    if (index5 > window_end) {
+      index5 = window_start;
+      accumulator5 = window_start;
       s5_latch = 0;
     }
   }
 
   delay_buffer_index++;
-  if (delay_buffer_index == 500) delay_buffer_index = 0;
+  if (delay_buffer_index == 600) delay_buffer_index = 0;
 }
 
 void loop(void) {
-  byte d2 = digitalRead(2);
-  byte d3 = digitalRead(3);
-  byte d4 = digitalRead(4);
-  byte d5 = digitalRead(5);
-  byte d6 = digitalRead(6);
-  byte d7 = digitalRead(7);
+  byte d1 = digitalRead(2);
+  byte d2 = digitalRead(3);
+  byte d3 = digitalRead(4);
+  byte d4 = digitalRead(5);
+  byte d5 = digitalRead(6);
+  byte d6 = digitalRead(7);
+  byte d7 = digitalRead(8);
 
   // analogRead should be able to do 0-1023 for values
   // but my potentiometers only get up to ~855
   window_start = map(analogRead(A0), 0, 855, 0, sample_length);
   window_end   = map(analogRead(A1), 0, 855, 0, sample_length);
 
+  if (d1 == ls1) ld1 = millis();
   if (d2 == ls2) ld2 = millis();
   if (d3 == ls3) ld3 = millis();
   if (d4 == ls4) ld4 = millis();
   if (d5 == ls5) ld5 = millis();
   if (d6 == ls6) ld6 = millis();
   if (d7 == ls7) ld7 = millis();
+
+  if (d1 != ls1 && (millis() - ld1) > debounceDelay) {
+    s1 = d1;
+    s1_trigger = !s1 && ls1;
+  }
 
   if (d2 != ls2 && (millis() - ld2) > debounceDelay) {
     s2 = d2;
@@ -327,6 +350,7 @@ void loop(void) {
     }
   }
   
+  ls1 = s1;
   ls2 = s2;
   ls3 = s3;
   ls4 = s4;
