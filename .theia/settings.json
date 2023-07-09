@@ -1,0 +1,7 @@
+{
+  "arduino.cloud.enabled": false,
+  "arduino.cloud.sketchSyncEndpoint": "",
+  "arduino.cloud.pushpublic.warn": false,
+  "arduino.cloud.push.warn": false,
+  "arduino.cloud.pull.warn": false
+}
