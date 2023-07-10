@@ -1,10 +1,9 @@
 #include <SPI.h>
 
-#define WRITE_ENABLE 6
-#define WRITE 2
-#define READ 3
-#define PAGE_SIZE 64
-#define RECORD_LIMIT 80000
+#define EEPROM_WRITE_ENABLE 6
+#define EEPROM_WRITE 2
+#define EEPROM_READ 3
+#define EEPROM_PAGE_SIZE 64
 
 byte s1, s1_trigger, s1_latch;
 byte ls1 = HIGH;
@@ -37,13 +36,12 @@ unsigned long ld7 = 0;
 byte continuous;
 
 const unsigned long debounceDelay = 50;
-
-const unsigned long dds_tune = 4294967296 / 8000;
+const unsigned long dds_tune = 4294967296 / 9615;
 
 int sample_out_temp;
 byte sample_out;
 
-byte pitch = 56;
+byte pitch = 70;
 byte minor_second = round(pitch * 1.059463);
 byte major_second = round(pitch * 1.122462);
 byte minor_third = round(pitch * 1.189207);
@@ -66,7 +64,7 @@ byte delay_buffer[800] = {0};
 uint16_t delay_buffer_index;
 byte delay_active;
 
-byte recording, record_page_index, record_buffer_index;
+byte record_page_index, record_buffer_index, recording;
 uint16_t sample_length = 2052;
 
 byte record_buffer[64] = {0};
@@ -146,12 +144,12 @@ void setup(void) {
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
 
-  TCCR2A = 0;// set entire TCCR2A register to 0
-  TCCR2B = 0;// same for TCCR2B
-  TCNT2  = 0;//initialize counter value to 0
+  TCCR2A = 0; // set entire TCCR2A register to 0
+  TCCR2B = 0; // same for TCCR2B
+  TCNT2  = 0; // initialize counter value to 0
   
   // set compare match register for 8khz increments
-  OCR2A = 242;// = (16*10^6) / (8000*8) - 1 (must be <256)
+  OCR2A = 249; // = (16*10^6) / (8000*8) - 1 (must be <256)
   // turn on CTC mode
   TCCR2A |= (1 << WGM21);
   // Set CS21 bit for 8 prescaler
@@ -163,172 +161,209 @@ void setup(void) {
 }
 
 ISR(TIMER2_COMPA_vect) {
-  if (recording) {
-    record_buffer[record_buffer_index] = (analogRead(0) & 255);
+  if (!continuous && s1_trigger) {
+    index1 = window_start;
+    accumulator1 = 0;
+    s1_latch = 1;
+    s1_trigger = 0;
+  }
 
-    record_buffer_index++;
+  if (!continuous && s2_trigger) {
+    index2 = window_start;
+    accumulator2 = window_start;
+    s2_latch = 1;
+    s2_trigger = 0;
+  }
 
-    if (record_buffer_index == 64) {
-      write_eeprom_page(record_page_index);
-      record_page_index++;
-      record_buffer_index = 0;
-    }
-  } else {
-    if (!continuous && s1_trigger) {
+  if (!continuous && s3_trigger) {
+    index3 = window_start;
+    accumulator3 = window_start;
+    s3_latch = 1;
+    s3_trigger = 0;
+  }
+
+  if (!continuous && s4_trigger) {
+    index4 = window_start;
+    accumulator4 = window_start;
+    s4_latch = 1;
+    s4_trigger = 0;
+  }
+
+  if (!continuous && s5_trigger) {
+    index5 = window_start;
+    accumulator5 = window_start;
+    s5_latch = 1;
+    s5_trigger = 0;
+  }
+
+  if (!continuous && s6_trigger) {
+    index6 = window_start;
+    accumulator6 = window_start;
+    s6_latch = 1;
+    s6_trigger = 0;
+  }
+
+  // sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s1_latch || (continuous && !s1));
+  sample1 = (read_eeprom_byte(index1) - 127) * (s1_latch || (continuous && !s1));
+  // sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s2_latch || (continuous && !s2));
+  sample2 = (read_eeprom_byte(index2) - 127) * (s2_latch || (continuous && !s2));
+  // sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
+  // sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s4_latch || (continuous && !s4));
+  // sample5 = (pgm_read_byte(&sample_table[index5]) - 127) * (s5_latch || (continuous && !s5));
+  // sample6 = (pgm_read_byte(&sample_table[index6]) - 127) * (s6_latch || (continuous && !s6));
+  // if (s1_latch || (continuous && !s1)) {
+    // read from eeprom
+    // sample1 = read_eeprom_byte(index1) - 127;
+  // }
+
+  delay_sample = delay_buffer[delay_buffer_index] * delay_active;
+
+  sample_out_temp = ((sample1 + sample2 + sample3 + sample4 + sample5 + sample6 + delay_sample) >> 1) + 127;
+
+  if (sample_out_temp > 255) {
+    sample_out_temp -= (sample_out_temp - 255) << 1;
+  }
+
+  if (sample_out_temp < 0) {
+    sample_out_temp += sample_out_temp * -2;
+  }
+
+  sample_out = sample_out_temp;
+
+  uint16_t dac_out = (0 << 15) | (1 << 14) | (1 << 13) | (1 << 12) | (sample_out << 4);
+  digitalWrite(10, LOW);
+  SPI.transfer(dac_out >> 8);
+  SPI.transfer(dac_out & 255);
+  digitalWrite(10, HIGH);
+
+  delay_buffer[delay_buffer_index] = (sample_out >> 1);
+
+  if (continuous || s1_latch) {
+    accumulator1 += pitch;
+    index1 = window_start + (accumulator1 >> (6));
+
+    if (index1 > window_end) {
       index1 = window_start;
       accumulator1 = 0;
-      s1_latch = 1;
-      s1_trigger = 0;
+      s1_latch = 0;
     }
+  }
 
-    if (!continuous && s2_trigger) {
+  if (continuous || s2_latch) {
+    accumulator2 += minor_second;
+    index2 = window_start + (accumulator2 >> (6));
+
+    if (index2 > window_end) {
       index2 = window_start;
       accumulator2 = window_start;
-      s2_latch = 1;
-      s2_trigger = 0;
+      s2_latch = 0;
     }
+  }
 
-    if (!continuous && s3_trigger) {
+  if (continuous || s3_latch) {
+    accumulator3 += major_second;
+    index3 = (accumulator3 >> (6));
+
+    if (index3 > window_end) {
       index3 = window_start;
       accumulator3 = window_start;
-      s3_latch = 1;
-      s3_trigger = 0;
+      s3_latch = 0;
     }
+  }
 
-    if (!continuous && s4_trigger) {
+  if (continuous || s4_latch) {
+    accumulator4 += minor_third;
+    index4 = (accumulator4 >> (6));
+
+    if (index4 > window_end) {
       index4 = window_start;
       accumulator4 = window_start;
-      s4_latch = 1;
-      s4_trigger = 0;
+      s4_latch = 0;
     }
+  }
 
-    if (!continuous && s5_trigger) {
+  if (continuous || s5_latch) {
+    accumulator5 += major_third;
+    index5 = (accumulator5 >> (6));
+
+    if (index5 > window_end) {
       index5 = window_start;
       accumulator5 = window_start;
-      s5_latch = 1;
-      s5_trigger = 0;
+      s5_latch = 0;
     }
+  }
 
-    if (!continuous && s6_trigger) {
+  if (continuous || s6_latch) {
+    accumulator6 += perfect_fourth;
+    index6 = (accumulator6 >> (6));
+
+    if (index6 > window_end) {
       index6 = window_start;
       accumulator6 = window_start;
-      s6_latch = 1;
-      s6_trigger = 0;
+      s6_latch = 0;
     }
+  }
 
-    // sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s1_latch || (continuous && !s1));
-    sample1 = (read_eeprom_byte(index1) - 127) * (s1_latch || (continuous && !s1));
-    // sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s2_latch || (continuous && !s2));
-    sample2 = (read_eeprom_byte(index2) - 127) * (s2_latch || (continuous && !s2));
-    // sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
-    // sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s4_latch || (continuous && !s4));
-    // sample5 = (pgm_read_byte(&sample_table[index5]) - 127) * (s5_latch || (continuous && !s5));
-    // sample6 = (pgm_read_byte(&sample_table[index6]) - 127) * (s6_latch || (continuous && !s6));
-    // if (s1_latch || (continuous && !s1)) {
-      // read from eeprom
-      // sample1 = read_eeprom_byte(index1) - 127;
-      // Serial.println(sample1);
-    // }
+  delay_buffer_index++;
 
-    delay_sample = delay_buffer[delay_buffer_index] * delay_active;
+  if (delay_buffer_index == 800) delay_buffer_index = 0;
+}
 
-    sample_out_temp = ((sample1 + sample2 + sample3 + sample4 + sample5 + sample6 + delay_sample) >> 1) + 127;
+void enable_record() {
+  cli(); // disable interrupt for playback timer  
 
-    if (sample_out_temp > 255) {
-      sample_out_temp -= (sample_out_temp - 255) << 1;
-    }
+  ADCSRA = 0; // clear adc "a" register
+  
+  // set ADMUX to inscrutible value... 01100000... ref voltage to vref, left shift capture, read from A0
+  // setting it this way because I don't know where to find the arduino constants for ADMUX[3:0] :-)
+  ADMUX = 96;
+  
+  // set ADC clock with 128 prescaler -> 16 mHz/128 = 125 kHz
+  // 125 kHz / 13 clock cycles per sample (minus first sample) = ~9615 samples per second
+  ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
 
-    if (sample_out_temp < 0) {
-      sample_out_temp += sample_out_temp * -2;
-    }
+  ADCSRA |= (1 << ADATE); // enable auto trigger
+  ADCSRA |= (1 << ADIE);  // enable interrupts
+  ADCSRA |= (1 << ADEN);  // enable ADC
+  ADCSRA |= (1 << ADSC);  // start ADC measurements
+  
+  sei();
+}
 
-    sample_out = sample_out_temp;
+void disable_record() {
+  cli();
 
-    uint16_t dac_out = (0 << 15) | (1 << 14) | (1 << 13) | (1 << 12) | (sample_out << 4);
-    digitalWrite(10, LOW);
-    SPI.transfer(dac_out >> 8);
-    SPI.transfer(dac_out & 255);
-    digitalWrite(10, HIGH);
+  // reset ADC register values to...defaults??
+  ADCSRA = 151;
+  ADMUX = 71;
 
-    delay_buffer[delay_buffer_index] = (sample_out >> 1);
+  if (record_page_index > 0) {
+    sample_length = record_page_index * EEPROM_PAGE_SIZE; // clip to last full page
+  }
+  
+  sei();
+}
 
-    if (continuous || s1_latch) {
-      accumulator1 += pitch;
-      index1 = window_start + (accumulator1 >> (6));
+ISR(ADC_vect) {
+  // Serial.println(ADCH);
+  record_buffer[record_buffer_index] = ADCH;
 
-      if (index1 > window_end) {
-        index1 = window_start;
-        accumulator1 = 0;
-        s1_latch = 0;
-      }
-    }
+  record_buffer_index++;
 
-    if (continuous || s2_latch) {
-      accumulator2 += minor_second;
-      index2 = window_start + (accumulator2 >> (6));
+  if (record_buffer_index == 64) {
+    write_eeprom_page(record_page_index);
+    record_page_index++;
+    record_buffer_index = 0;
+  }
 
-      if (index2 > window_end) {
-        index2 = window_start;
-        accumulator2 = window_start;
-        s2_latch = 0;
-      }
-    }
-
-    if (continuous || s3_latch) {
-      accumulator3 += major_second;
-      index3 = (accumulator3 >> (6));
-
-      if (index3 > window_end) {
-        index3 = window_start;
-        accumulator3 = window_start;
-        s3_latch = 0;
-      }
-    }
-
-    if (continuous || s4_latch) {
-      accumulator4 += minor_third;
-      index4 = (accumulator4 >> (6));
-
-      if (index4 > window_end) {
-        index4 = window_start;
-        accumulator4 = window_start;
-        s4_latch = 0;
-      }
-    }
-
-    if (continuous || s5_latch) {
-      accumulator5 += major_third;
-      index5 = (accumulator5 >> (6));
-
-      if (index5 > window_end) {
-        index5 = window_start;
-        accumulator5 = window_start;
-        s5_latch = 0;
-      }
-    }
-
-    if (continuous || s6_latch) {
-      accumulator6 += perfect_fourth;
-      index6 = (accumulator6 >> (6));
-
-      if (index6 > window_end) {
-        index6 = window_start;
-        accumulator6 = window_start;
-        s6_latch = 0;
-      }
-    }
-
-    delay_buffer_index++;
-    if (delay_buffer_index == 800) delay_buffer_index = 0;
+  // 9615 samples per second * 10 seconds of record time / 64 samples per page
+  // 10 seconds is a chosen value, we could go up to ~30 seconds but that seems egregious
+  if (record_page_index == 1503) {
+    disable_record();
   }
 }
 
 void loop(void) {
-  // analogRead should be able to do 0-1023 for values
-  // but my potentiometers only get up to ~855
-  window_start = map(analogRead(A6), 0, 855, 0, sample_length);
-  window_end   = map(analogRead(A7), 0, 855, 0, sample_length);
-  
   byte d1 = digitalRead(2);
   byte d2 = digitalRead(3);
   byte d3 = digitalRead(4);
@@ -337,36 +372,27 @@ void loop(void) {
   byte d6 = digitalRead(7);
   byte d7 = digitalRead(8);
 
-  if (recording) {
-    // account for page 0 with this "+ 1"
-    if ((record_page_index + 1) * PAGE_SIZE > RECORD_LIMIT) {
-      d1 = 1;
-      Serial.println("really okay");
-    }
-  }
-
-  if (d1 == ls1) ld1 = millis();
   if (d2 == ls2) ld2 = millis();
   if (d3 == ls3) ld3 = millis();
   if (d4 == ls4) ld4 = millis();
   if (d5 == ls5) ld5 = millis();
   if (d6 == ls6) ld6 = millis();
-  if (d7 == ls7) ld7 = millis();
 
-  if (d1 != ls1 && (millis() - ld1) > debounceDelay) {
+  if (d1 == ls1) {
+    ld1 = millis();
+  } else if (millis() - ld1 > debounceDelay) {
     s1 = d1;
 
     if (!s7) {
       if (!s1) {
+        recording = 1;
         record_buffer_index = 0;
         record_page_index = 0;
-        recording = 1;
+        enable_record();
       } else {
-        recording = 0;
-        if (record_page_index > 0) {
-          sample_length = record_page_index * PAGE_SIZE;
-        }
+        disable_record();
         Serial.println(sample_length);
+        recording = 0;
       }
     } else {
       s1_trigger = !s1 && ls1 && !continuous;
@@ -420,7 +446,9 @@ void loop(void) {
     s6_trigger = !s6 && ls6 && !continuous;
   }
 
-  if (d7 != ls7 && (millis() - ld7) > debounceDelay) {
+  if (d7 == ls7) {
+    ld7 = millis();
+  } else if (millis() - ld7 > debounceDelay) {
     s7 = d7;
   }
   
@@ -431,10 +459,20 @@ void loop(void) {
   ls5 = s5;
   ls6 = s6;
   ls7 = s7;
+
+  window_start = 0;
+  window_end = sample_length;
+  
+  // analogRead should be able to do 0-1023 for values
+  // but my potentiometers only get up to ~855
+  if (!recording) {
+    window_start = 0; // map(analogRead(A6), 0, 855, 0, sample_length);
+    window_end   = sample_length;// map(analogRead(A7), 0, 855, 0, sample_length);
+  }
 }
 
-bool write_eeprom_page(uint16_t page_index) {
-  uint16_t address = page_index * PAGE_SIZE;
+void write_eeprom_page(uint16_t page_index) {
+  uint16_t address = page_index * EEPROM_PAGE_SIZE;
 
   enable_eeprom_write();
 
@@ -442,7 +480,7 @@ bool write_eeprom_page(uint16_t page_index) {
   digitalWrite(9, LOW);
 
   // instruction
-  SPI.transfer(WRITE);
+  SPI.transfer(EEPROM_WRITE);
 
   // MSB of address
   SPI.transfer(address >> 8);
@@ -457,10 +495,6 @@ bool write_eeprom_page(uint16_t page_index) {
 
   // bring CS high to end SPI interaction
   digitalWrite(9, HIGH);
-
-  delay(5);
-
-  return true;
 }
 
 byte read_eeprom_byte(uint16_t address) {
@@ -468,7 +502,7 @@ byte read_eeprom_byte(uint16_t address) {
   digitalWrite(9, LOW);
 
   // read instruction
-  SPI.transfer(READ);
+  SPI.transfer(EEPROM_READ);
 
   // MSB of address
   SPI.transfer(address >> 8);
@@ -476,6 +510,7 @@ byte read_eeprom_byte(uint16_t address) {
   // LSB of address
   SPI.transfer(address & 255);
 
+  // get value at address ("1" value doesn't matter, just have to send something to get a response)
   byte val = SPI.transfer(1);
 
   // CS back high
@@ -484,10 +519,13 @@ byte read_eeprom_byte(uint16_t address) {
   return val;
 }
 
-bool enable_eeprom_write() {
+void enable_eeprom_write() {
+  // CS low to take action
   digitalWrite(9, LOW);
-  SPI.transfer(WRITE_ENABLE);
+
+  // read instruction
+  SPI.transfer(EEPROM_WRITE_ENABLE);
+
+  // CS high to end action
   digitalWrite(9, HIGH);
-  delay(5);
-  return true;
 }
