@@ -43,7 +43,7 @@ const unsigned long dds_tune = 4294967296 / 8000;
 int sample_out_temp;
 byte sample_out;
 
-byte pitch = 70;
+byte pitch = 56;
 byte minor_second = round(pitch * 1.059463);
 byte major_second = round(pitch * 1.122462);
 byte minor_third = round(pitch * 1.189207);
@@ -151,7 +151,7 @@ void setup(void) {
   TCNT2  = 0;//initialize counter value to 0
   
   // set compare match register for 8khz increments
-  OCR2A = 249;// = (16*10^6) / (8000*8) - 1 (must be <256)
+  OCR2A = 242;// = (16*10^6) / (8000*8) - 1 (must be <256)
   // turn on CTC mode
   TCCR2A |= (1 << WGM21);
   // Set CS21 bit for 8 prescaler
@@ -164,7 +164,7 @@ void setup(void) {
 
 ISR(TIMER2_COMPA_vect) {
   if (recording) {
-    record_buffer[record_buffer_index] = (analogRead(0) >> 2);
+    record_buffer[record_buffer_index] = (analogRead(0) & 255);
 
     record_buffer_index++;
 
@@ -256,13 +256,10 @@ ISR(TIMER2_COMPA_vect) {
       accumulator1 += pitch;
       index1 = window_start + (accumulator1 >> (6));
 
-      // Serial.println(index1);
-
       if (index1 > window_end) {
         index1 = window_start;
         accumulator1 = 0;
         s1_latch = 0;
-        Serial.println("blep?");
       }
     }
 
