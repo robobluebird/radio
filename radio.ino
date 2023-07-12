@@ -458,6 +458,11 @@ void loop(void) {
   byte d7 = digitalRead(8);
 
   if (d1 == ls1) {
+    if (continuous && !s1 && (pr & NP1) && p < mp) {
+      pr |= P1;
+      p++;
+    }
+
     ld1 = millis();
   } else if (millis() - ld1 > debounceDelay) {
     s1 = d1;
@@ -490,6 +495,11 @@ void loop(void) {
   }
 
   if (d2 == ls2) {
+    if (continuous && !s2 && (pr & NP2) && p < mp) {
+      pr |= P2;
+      p++;
+    }
+
     ld2 = millis();
   } else if (millis() - ld2 > debounceDelay) {
     s2 = d2;
@@ -516,6 +526,11 @@ void loop(void) {
 
 
   if (d3 == ls3) {
+    if (continuous && !s3 && (pr & NP3) && p < mp) {
+      pr |= P3;
+      p++;
+    }
+
     ld3 = millis();
   } else if (millis() - ld3 > debounceDelay) {
     s3 = d3;
@@ -558,6 +573,11 @@ void loop(void) {
   }
 
   if (d4 == ls4) {
+    if (continuous && !s4 && (pr & NP4) && p < mp) {
+      pr |= P4;
+      p++;
+    }
+
     ld4 = millis();
   } else if (millis() - ld4 > debounceDelay) {
     s4 = d4;
@@ -594,6 +614,11 @@ void loop(void) {
   }
 
   if (d5 == ls5) {
+    if (continuous && !s5 && (pr & NP5) && p < mp) {
+      pr |= P5;
+      p++;
+    }
+
     ld5 = millis();
   } else if (millis() - ld5 > debounceDelay) {
     s5 = d5;
@@ -614,6 +639,11 @@ void loop(void) {
   }
 
   if (d6 == ls6) {
+    if (continuous && !s6 && (pr & NP6) && p < mp) {
+      pr |= P6;
+      p++;
+    }
+
     ld6 = millis();
   } else if (millis() - ld6 > debounceDelay) {
     s6 = d6;
