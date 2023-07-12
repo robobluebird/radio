@@ -1,9 +1,26 @@
 #include <SPI.h>
 
+// old
+// sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
+
 #define EEPROM_WRITE_ENABLE 6
 #define EEPROM_WRITE 2
 #define EEPROM_READ 3
 #define EEPROM_PAGE_SIZE 64
+
+#define P1 0b10000000
+#define P2 0b01000000
+#define P3 0b00100000
+#define P4 0b00010000
+#define P5 0b00001000
+#define P6 0b00000100
+
+#define NP1 0b01111111
+#define NP2 0b10111111
+#define NP3 0b11011111
+#define NP4 0b11101111
+#define NP5 0b11110111
+#define NP6 0b11111011
 
 byte s1, s1_trigger, s1_latch;
 byte ls1 = HIGH;
@@ -33,15 +50,14 @@ byte s7;
 byte ls7 = HIGH;
 unsigned long ld7 = 0;
 
-byte continuous;
+byte continuous, reverse;
 
 const unsigned long debounceDelay = 50;
-const unsigned long dds_tune = 4294967296 / 9615;
 
 int sample_out_temp;
 byte sample_out;
 
-byte pitch = 70;
+byte pitch = 60;
 byte minor_second = round(pitch * 1.059463);
 byte major_second = round(pitch * 1.122462);
 byte minor_third = round(pitch * 1.189207);
@@ -60,71 +76,19 @@ int sample1, sample2, sample3, sample4, sample5, sample6;
 uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5, accumulator6;
 
 int delay_sample;
-byte delay_buffer[800] = {0};
+byte delay_buffer[800] = { 0 };
 uint16_t delay_buffer_index;
 byte delay_active;
 
-byte record_page_index, record_buffer_index, recording;
-uint16_t sample_length = 2052;
+byte record_buffer_index, recording;
+uint16_t sample_length, record_page_index;
 
-byte record_buffer[64] = {0};
+byte record_buffer[64] = { 0 };
 
-const byte sample_table[] PROGMEM =
-{ 128,127,130,128,131,129,136,141,182,240,246,246,243,244,238,241,229,237,102,-6,11,-2,7,1,6,2,6,5,8,8,11,13,14,17,18,21,22,26,28,33,36,45,54,70,94,
-127,168,206,223,233,238,244,244,245,248,249,253,253,252,251,252,251,251,250,248,246,245,242,240,238,236,234,232,229,226,222,216,208,196,176,147,113,
-74,44,30,24,17,13,10,7,4,3,2,2,6,4,3,4,4,4,5,6,7,9,11,12,14,16,18,20,23,26,29,35,44,58,83,115,149,186,212,224,231,235,239,239,240,241,242,243,244,
-247,248,249,248,248,247,246,245,243,242,240,238,236,235,233,230,227,224,219,213,202,187,166,140,113,82,53,38,30,25,22,17,14,12,10,9,8,7,6,5,5,5,5,6,
-6,7,8,9,11,13,14,16,17,19,21,24,26,31,36,45,59,80,109,140,169,194,212,221,227,231,235,237,239,241,243,244,245,242,240,243,243,243,243,242,241,240,
-239,238,237,235,234,232,229,228,224,221,216,207,195,178,153,130,106,80,58,44,35,30,27,22,20,18,17,16,15,14,14,14,14,15,15,14,10,11,11,12,13,15,16,17,
-19,20,22,25,28,31,37,44,54,68,88,109,129,152,176,195,209,218,223,228,231,234,236,237,239,238,236,237,237,237,237,238,239,239,239,238,238,237,236,235,
-234,232,231,229,226,224,220,214,205,193,174,152,131,111,90,70,54,44,38,30,27,24,22,21,20,19,18,18,18,18,18,19,19,20,19,19,19,20,20,22,23,24,25,27,29,
-32,36,41,46,55,67,80,97,113,130,148,167,185,198,208,215,220,224,227,229,231,232,233,234,234,235,235,233,232,232,233,234,234,234,233,232,231,229,228,
-226,224,221,218,213,206,196,185,170,154,138,123,108,93,79,67,62,50,40,36,32,30,28,27,25,24,24,23,23,23,24,25,25,25,26,25,25,25,25,26,27,28,29,31,34,
-36,40,45,52,62,72,86,102,116,130,145,161,176,188,198,208,213,217,220,222,224,225,227,227,228,228,228,228,228,227,225,223,224,223,223,225,224,223,222,
-220,218,214,212,208,201,196,189,177,169,157,146,134,123,111,102,95,75,63,56,49,44,40,37,35,33,32,31,30,30,30,30,30,32,35,34,34,34,33,33,33,33,34,36,
-37,41,44,48,55,61,67,76,86,99,110,121,131,141,152,162,172,184,192,199,205,210,213,216,218,220,221,221,222,222,222,221,221,216,214,214,213,213,212,211,
-210,209,206,204,205,203,199,195,190,184,175,168,161,151,143,138,126,115,109,99,92,84,77,70,65,60,57,53,50,47,45,44,43,42,42,42,41,43,43,43,44,44,45,
-45,45,46,46,46,46,49,51,57,63,71,80,87,94,103,112,121,130,139,150,160,168,176,182,188,193,197,201,204,206,208,210,211,210,210,209,209,208,205,204,204,
-204,203,202,201,200,199,195,192,189,185,182,177,171,164,157,149,142,134,127,119,112,105,99,94,89,85,81,77,74,71,69,68,66,64,63,62,61,60,59,58,58,58,
-57,57,58,59,60,60,61,63,65,69,73,77,81,86,90,97,103,108,114,119,125,131,136,141,146,150,155,159,164,168,171,174,176,179,181,183,184,186,188,189,190,
-191,191,191,189,188,187,186,185,183,182,180,178,175,172,169,166,161,156,152,149,146,140,135,130,125,120,115,112,108,104,101,98,95,91,88,85,82,79,77,
-75,73,73,72,71,71,71,71,71,72,71,71,72,74,76,76,78,82,86,89,93,98,100,104,107,112,117,120,124,128,132,136,140,144,148,151,154,157,160,162,164,166,
-167,169,170,171,172,173,174,174,174,175,175,175,175,175,174,174,172,170,168,166,164,162,160,156,152,150,145,142,139,135,132,128,125,122,118,116,113,
-110,108,105,102,100,97,95,93,91,89,87,86,84,83,82,81,81,81,82,82,83,84,85,87,88,90,93,95,97,100,103,106,110,113,117,121,124,127,130,132,135,137,140,
-142,144,146,147,149,151,152,154,155,157,159,160,162,163,164,164,165,165,165,165,164,164,163,163,161,160,159,158,157,155,152,150,148,145,142,139,137,
-135,132,130,128,126,124,122,120,118,116,114,112,109,107,105,104,102,101,99,98,97,95,94,94,93,93,94,94,94,95,96,97,98,100,102,104,106,108,110,112,113,
-115,116,118,119,121,122,124,126,128,130,132,135,137,139,141,143,146,148,149,151,153,154,155,156,156,156,157,157,157,157,156,156,155,154,153,152,151,
-150,149,148,147,146,145,144,142,141,140,138,136,134,132,130,128,126,124,123,121,119,117,115,113,111,109,108,107,106,105,105,105,104,104,104,103,102,
-102,102,102,102,102,103,103,104,105,106,107,109,110,111,112,114,116,118,120,122,124,126,127,129,131,132,134,135,137,138,140,141,142,143,143,144,145,
-145,146,146,147,148,149,150,150,151,151,152,152,151,151,150,150,149,148,146,144,142,140,138,136,134,132,131,129,128,126,125,123,122,120,119,117,116,
-115,114,113,112,112,112,112,112,111,111,111,111,111,111,111,110,110,110,110,110,110,110,111,112,113,114,114,115,115,116,116,117,118,119,121,122,124,
-125,127,128,129,130,131,132,133,134,135,136,137,138,139,139,140,141,141,142,142,142,142,142,142,142,142,142,142,142,142,142,141,141,140,140,139,138,
-137,137,136,134,133,132,130,129,127,125,124,122,121,119,118,117,116,116,115,114,114,114,113,113,112,112,112,112,112,112,113,113,113,113,113,114,114,
-114,114,114,115,115,115,116,116,117,118,119,120,121,122,123,124,126,127,128,130,131,132,134,135,136,137,138,138,139,139,140,140,140,140,141,141,140,
-140,140,139,139,139,139,138,138,137,137,136,135,134,133,132,132,131,130,129,128,128,127,126,126,125,124,123,122,121,120,120,119,119,118,118,118,117,
-117,116,116,116,116,115,115,115,115,115,115,115,115,115,115,115,116,116,116,117,118,119,120,121,122,122,123,124,125,126,126,127,128,128,129,130,131,
-131,131,132,133,134,134,135,135,136,136,136,136,136,136,136,136,136,136,136,136,135,136,136,135,135,135,135,134,133,133,132,131,130,129,128,127,126,
-126,125,125,124,124,123,122,122,121,121,121,120,120,119,119,119,119,118,118,118,117,117,117,118,118,118,119,119,120,120,120,120,120,121,121,121,121,
-121,121,122,122,123,123,124,124,125,126,127,127,128,129,129,129,130,130,130,130,130,131,131,132,132,133,133,134,134,134,135,135,135,135,135,135,134,
-134,133,133,132,132,131,131,131,130,130,130,129,129,128,128,127,127,126,126,125,125,124,124,124,123,123,123,122,122,122,121,121,121,120,120,120,120,
-119,119,119,119,119,119,119,119,119,119,119,120,120,121,121,121,122,122,123,123,124,124,125,126,127,127,128,129,129,130,130,130,130,130,130,130,131,
-131,132,132,132,133,133,133,134,134,134,134,134,134,134,134,133,133,133,132,132,131,131,131,130,130,129,129,128,128,127,127,126,126,126,125,125,125,
-124,124,123,123,122,122,121,121,121,121,121,121,121,121,121,121,121,121,121,121,122,122,122,122,123,123,123,123,123,123,124,124,124,124,124,124,125,
-125,125,126,126,126,126,126,127,127,127,128,128,128,129,129,130,130,130,130,131,131,131,131,132,132,132,132,132,132,132,132,132,132,132,132,131,131,
-131,130,130,129,129,128,128,128,128,127,127,127,126,126,125,125,125,124,124,123,123,123,123,123,123,123,122,122,122,122,122,122,122,122,122,122,122,
-122,122,122,123,123,123,123,124,124,124,124,125,125,125,125,125,126,126,126,126,127,127,127,127,127,128,128,128,129,129,129,130,130,130,130,130,130,
-130,130,130,130,130,130,130,130,130,129,129,129,129,129,129,129,128,128,128,128,127,127,127,126,126,126,125,125,125,125,124,124,124,124,124,124,124,
-124,124,124,124,124,124,124,124,124,124,124,124,124,124,125,125,125,125,124,124,124,124,124,124,124,125,125,125,125,125,125,125,126,126,126,126,126,
-127,127,127,127,127,128,128,128,128,128,128,128,128,129,129,129,129,129,129,129,129,129,129,129,129,129,128,128,128,128,128,127,127,127,127,127,127,
-127,127,126,126,126,126,126,126,126,126,126,126,125,125,125,125,125,125,125,125,125,124,124,124,124,124,124,124,124,124,124,124,124,124,124,124,124,
-124,124,125,125,125,125,126,126,126,126,127,127,127,127,127,127,127,127,127,127,127,127,127,128,128,128,128,128,128,128,127,127,127,127,127,127,128,
-128,128,128,128,128,128,128,128,128,128,128,128,127,127,127,127,127,127,127,127,127,126,126,126,126,126,125,125,125,125,125,125,125,125,124,124,124,
-124,124,124,124,124,124,124,124,124,124,124,124,125,125,125,125,125,125,125,125,126,126,126,126,126,126,126,126,126,126,127,127,127,127,127,127,127,
-127,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,129,129,129,129,128,128,128,128,127,127,127,127,126,126,126,126,126,126,
-126,126,126,126,126,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,126,126,126,126,126,126,126,126,126,126,126,126,126,
-126,126,126,126,126,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127};
-
-
+byte initial_adcsra, initial_admux;
+byte p;   // keeps count of how many samples are playing at any one time
+byte mp = 3;  // max number of samples that can be playing at one time (based on speed of byte read from ram...too many and it'll choke!)
+byte pr;  // "playing register" -> use bits to track which pitches are active to avoid doubling the count...just do 8 for now...
 
 void setup(void) {
   cli();
@@ -138,83 +102,164 @@ void setup(void) {
   pinMode(6, INPUT_PULLUP);
   pinMode(7, INPUT_PULLUP);
   pinMode(8, INPUT_PULLUP);
+
+  // CS pin for eeprom
   pinMode(9, OUTPUT);
   digitalWrite(9, HIGH);
 
   SPI.begin();
   SPI.setBitOrder(MSBFIRST);
 
-  TCCR2A = 0; // set entire TCCR2A register to 0
-  TCCR2B = 0; // same for TCCR2B
-  TCNT2  = 0; // initialize counter value to 0
-  
+  TCCR2A = 0;  // set entire TCCR2A register to 0
+  TCCR2B = 0;  // same for TCCR2B
+  TCNT2 = 0;   // initialize counter value to 0
+
   // set compare match register for 8khz increments
-  OCR2A = 249; // = (16*10^6) / (8000*8) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR2A |= (1 << WGM21);
-  // Set CS21 bit for 8 prescaler
-  TCCR2B |= (1 << CS21);   
-  // enable timer compare interrupt
-  TIMSK2 |= (1 << OCIE2A);
+  // OCR2A = 207; // = (16*10^6) / (8000*8) - 1 (must be < 256)
+  OCR2A = 249;
+  TCCR2A |= (1 << WGM21);   // turn on CTC mode
+  TCCR2B |= (1 << CS21);    // Set CS21 bit for 8 prescaler
+  TIMSK2 |= (1 << OCIE2A);  // enable timer compare interrupt
+
+  // capture initial values of ADC registers to restore when recording halts
+  initial_adcsra = ADCSRA;
+  initial_admux = ADMUX;
 
   sei();
 }
 
 ISR(TIMER2_COMPA_vect) {
   if (!continuous && s1_trigger) {
-    index1 = window_start;
-    accumulator1 = 0;
-    s1_latch = 1;
-    s1_trigger = 0;
+    if (pr & P1) {
+      index1 = window_start;
+      accumulator1 = 0;
+      s1_latch = 1;
+      s1_trigger = 0;
+    } else if (p < mp) {
+      index1 = window_start;
+      accumulator1 = 0;
+      s1_latch = 1;
+      s1_trigger = 0;
+      pr |= P1;
+      p++;
+    }
   }
 
   if (!continuous && s2_trigger) {
-    index2 = window_start;
-    accumulator2 = window_start;
-    s2_latch = 1;
-    s2_trigger = 0;
+    if (pr & P2) {
+      index2 = window_start;
+      accumulator2 = 0;
+      s2_latch = 1;
+      s2_trigger = 0;
+    } else if (p < mp) {
+      index2 = window_start;
+      accumulator2 = 0;
+      s2_latch = 1;
+      s2_trigger = 0;
+      pr |= P2;
+      p++;
+    }
   }
 
   if (!continuous && s3_trigger) {
-    index3 = window_start;
-    accumulator3 = window_start;
-    s3_latch = 1;
-    s3_trigger = 0;
+    if (pr & P3) {
+      index3 = window_start;
+      accumulator3 = 0;
+      s3_latch = 1;
+      s3_trigger = 0;
+    } else if (p < mp) {
+      index3 = window_start;
+      accumulator3 = 0;
+      s3_latch = 1;
+      s3_trigger = 0;
+      pr |= P3;
+      p++;
+    }
   }
 
   if (!continuous && s4_trigger) {
-    index4 = window_start;
-    accumulator4 = window_start;
-    s4_latch = 1;
-    s4_trigger = 0;
+    if (pr & P4) {
+      index4 = window_start;
+      accumulator4 = 0;
+      s4_latch = 1;
+      s4_trigger = 0;
+    } else if (p < mp) {
+      index4 = window_start;
+      accumulator4 = 0;
+      s4_latch = 1;
+      s4_trigger = 0;
+      pr |= P4;
+      p++;
+    }
   }
 
   if (!continuous && s5_trigger) {
-    index5 = window_start;
-    accumulator5 = window_start;
-    s5_latch = 1;
-    s5_trigger = 0;
+    if (pr & P5) {
+      index5 = window_start;
+      accumulator5 = 0;
+      s5_latch = 1;
+      s5_trigger = 0;
+    } else if (p < mp) {
+      index5 = window_start;
+      accumulator5 = 0;
+      s5_latch = 1;
+      s5_trigger = 0;
+      pr |= P5;
+      p++;
+    }
   }
 
-  if (!continuous && s6_trigger) {
-    index6 = window_start;
-    accumulator6 = window_start;
-    s6_latch = 1;
-    s6_trigger = 0;
+  if (p < mp && !continuous && s6_trigger) {
+    if (pr & P6) {
+      index6 = window_start;
+      accumulator6 = 0;
+      s6_latch = 1;
+      s6_trigger = 0;
+    } else if (p < mp) {
+      index6 = window_start;
+      accumulator6 = 0;
+      s6_latch = 1;
+      s6_trigger = 0;
+      pr |= P6;
+      p++;
+    }
   }
 
-  // sample1 = (pgm_read_byte(&sample_table[index1]) - 127) * (s1_latch || (continuous && !s1));
-  sample1 = (read_eeprom_byte(index1) - 127) * (s1_latch || (continuous && !s1));
-  // sample2 = (pgm_read_byte(&sample_table[index2]) - 127) * (s2_latch || (continuous && !s2));
-  sample2 = (read_eeprom_byte(index2) - 127) * (s2_latch || (continuous && !s2));
-  // sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
-  // sample4 = (pgm_read_byte(&sample_table[index4]) - 127) * (s4_latch || (continuous && !s4));
-  // sample5 = (pgm_read_byte(&sample_table[index5]) - 127) * (s5_latch || (continuous && !s5));
-  // sample6 = (pgm_read_byte(&sample_table[index6]) - 127) * (s6_latch || (continuous && !s6));
-  // if (s1_latch || (continuous && !s1)) {
-    // read from eeprom
-    // sample1 = read_eeprom_byte(index1) - 127;
-  // }
+  if (s1_latch || (continuous && (pr & P1))) {
+    sample1 = read_eeprom_byte(index1) - 127;
+  } else {
+    sample1 = 0;
+  }
+
+  if (s2_latch || (continuous && (pr & P2))) {
+    sample2 = read_eeprom_byte(index2) - 127;
+  } else {
+    sample2 = 0;
+  }
+
+  if (s3_latch || (continuous && (pr & P3))) {
+    sample3 = read_eeprom_byte(index3) - 127;
+  } else {
+    sample3 = 0;
+  }
+
+  if (s4_latch || (continuous && (pr & P4))) {
+    sample4 = read_eeprom_byte(index4) - 127;
+  } else {
+    sample4 = 0;
+  }
+
+  if (s5_latch || (continuous && (pr & P5))) {
+    sample5 = read_eeprom_byte(index5) - 127;
+  } else {
+    sample5 = 0;
+  }
+
+  if (s6_latch || (continuous && (pr & P6))) {
+    sample6 = read_eeprom_byte(index6) - 127;
+  } else {
+    sample6 = 0;
+  }
 
   delay_sample = delay_buffer[delay_buffer_index] * delay_active;
 
@@ -246,6 +291,11 @@ ISR(TIMER2_COMPA_vect) {
       index1 = window_start;
       accumulator1 = 0;
       s1_latch = 0;
+
+      if (!continuous) {
+        pr &= NP1;
+        p--;
+      }
     }
   }
 
@@ -255,52 +305,77 @@ ISR(TIMER2_COMPA_vect) {
 
     if (index2 > window_end) {
       index2 = window_start;
-      accumulator2 = window_start;
+      accumulator2 = 0;
       s2_latch = 0;
+
+      if (!continuous) {
+        pr &= NP2;
+        p--;
+      }
     }
   }
 
   if (continuous || s3_latch) {
     accumulator3 += major_second;
-    index3 = (accumulator3 >> (6));
+    index3 = window_start + (accumulator3 >> (6));
 
     if (index3 > window_end) {
       index3 = window_start;
-      accumulator3 = window_start;
+      accumulator3 = 0;
       s3_latch = 0;
+
+      if (!continuous) {
+        pr &= NP3;
+        p--;
+      }
     }
   }
 
   if (continuous || s4_latch) {
     accumulator4 += minor_third;
-    index4 = (accumulator4 >> (6));
+    index4 = window_start + (accumulator4 >> (6));
 
     if (index4 > window_end) {
       index4 = window_start;
-      accumulator4 = window_start;
+      accumulator4 = 0;
       s4_latch = 0;
+
+      if (!continuous) {
+        pr &= NP4;
+        p--;
+      }
     }
   }
 
   if (continuous || s5_latch) {
     accumulator5 += major_third;
-    index5 = (accumulator5 >> (6));
+    index5 = window_start + (accumulator5 >> (6));
 
     if (index5 > window_end) {
       index5 = window_start;
-      accumulator5 = window_start;
+      accumulator5 = 0;
       s5_latch = 0;
+
+      if (!continuous) {
+        pr &= NP5;
+        p--;
+      }
     }
   }
 
   if (continuous || s6_latch) {
     accumulator6 += perfect_fourth;
-    index6 = (accumulator6 >> (6));
+    index6 = window_start + (accumulator6 >> (6));
 
     if (index6 > window_end) {
       index6 = window_start;
-      accumulator6 = window_start;
+      accumulator6 = 0;
       s6_latch = 0;
+
+      if (!continuous) {
+        pr &= NP6;
+        p--;
+      }
     }
   }
 
@@ -310,23 +385,25 @@ ISR(TIMER2_COMPA_vect) {
 }
 
 void enable_record() {
-  cli(); // disable interrupt for playback timer  
+  cli();  // disable interrupt for playback timer
 
-  ADCSRA = 0; // clear adc "a" register
-  
+  TIMSK2 |= (0 << OCIE2A);  // disable playback
+
+  ADCSRA = 0;  // clear adc "a" register
+
   // set ADMUX to inscrutible value... 01100000... ref voltage to vref, left shift capture, read from A0
   // setting it this way because I don't know where to find the arduino constants for ADMUX[3:0] :-)
   ADMUX = 96;
-  
+
   // set ADC clock with 128 prescaler -> 16 mHz/128 = 125 kHz
   // 125 kHz / 13 clock cycles per sample (minus first sample) = ~9615 samples per second
   ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
 
-  ADCSRA |= (1 << ADATE); // enable auto trigger
-  ADCSRA |= (1 << ADIE);  // enable interrupts
-  ADCSRA |= (1 << ADEN);  // enable ADC
-  ADCSRA |= (1 << ADSC);  // start ADC measurements
-  
+  ADCSRA |= (1 << ADATE);  // enable auto trigger
+  ADCSRA |= (1 << ADIE);   // enable interrupts
+  ADCSRA |= (1 << ADEN);   // enable ADC
+  ADCSRA |= (1 << ADSC);   // start ADC measurements
+
   sei();
 }
 
@@ -334,13 +411,27 @@ void disable_record() {
   cli();
 
   // reset ADC register values to...defaults??
-  ADCSRA = 151;
-  ADMUX = 71;
+  ADCSRA = initial_adcsra;
+  ADMUX  = initial_admux;
 
   if (record_page_index > 0) {
-    sample_length = record_page_index * EEPROM_PAGE_SIZE; // clip to last full page
+    sample_length = record_page_index * EEPROM_PAGE_SIZE;  // clip to last full page
+
+    int i = 0;
+    for (i; i < 64; i++) {
+      record_buffer[i] = 0;
+    }
+
+    record_buffer[0] = (sample_length >> 8);
+    record_buffer[1] = (sample_length & 255);
+
+    write_eeprom_page(3999);
   }
-  
+
+  TIMSK2 |= (1 << OCIE2A);  // enable playback
+
+  pr = 0;
+
   sei();
 }
 
@@ -355,12 +446,6 @@ ISR(ADC_vect) {
     record_page_index++;
     record_buffer_index = 0;
   }
-
-  // 9615 samples per second * 10 seconds of record time / 64 samples per page
-  // 10 seconds is a chosen value, we could go up to ~30 seconds but that seems egregious
-  if (record_page_index == 1503) {
-    disable_record();
-  }
 }
 
 void loop(void) {
@@ -371,12 +456,6 @@ void loop(void) {
   byte d5 = digitalRead(6);
   byte d6 = digitalRead(7);
   byte d7 = digitalRead(8);
-
-  if (d2 == ls2) ld2 = millis();
-  if (d3 == ls3) ld3 = millis();
-  if (d4 == ls4) ld4 = millis();
-  if (d5 == ls5) ld5 = millis();
-  if (d6 == ls6) ld6 = millis();
 
   if (d1 == ls1) {
     ld1 = millis();
@@ -391,30 +470,65 @@ void loop(void) {
         enable_record();
       } else {
         disable_record();
-        Serial.println(sample_length);
         recording = 0;
       }
     } else {
-      s1_trigger = !s1 && ls1 && !continuous;
+      if (continuous) {
+        if (!s1) {
+          if (p < mp) {
+            pr |= P1;
+            p++;
+          }
+        } else if (pr & P1) {
+          pr &= NP1;
+          p--;
+        }
+      } else {
+        s1_trigger = !s1 && ls1;
+      }
     }
   }
 
-  if (d2 != ls2 && (millis() - ld2) > debounceDelay) {
+  if (d2 == ls2) {
+    ld2 = millis();
+  } else if (millis() - ld2 > debounceDelay) {
     s2 = d2;
 
     if (!s7 && !s2) {
       delay_active = !delay_active;
       delay_buffer_index = 0;
     } else {
-      s2_trigger = !s2 && ls2 && !continuous;
+      if (continuous) {
+        if (!s2) {
+          if (p < mp) {
+            pr |= P2;
+            p++;
+          }
+        } else if (pr & P2) {
+          pr &= NP2;
+          p--;
+        }
+      } else {
+        s2_trigger = !s2;
+      }
     }
   }
 
-  if (d3 != ls3 && (millis() - ld3) > debounceDelay) {
+
+  if (d3 == ls3) {
+    ld3 = millis();
+  } else if (millis() - ld3 > debounceDelay) {
     s3 = d3;
 
     if (!s7 && !s3) {
       continuous = !continuous;
+
+      if (continuous) {
+        mp = 2;
+      } else {
+        mp = 3;
+      }
+
       index1 = window_start;
       index2 = window_start;
       index3 = window_start;
@@ -422,28 +536,101 @@ void loop(void) {
       index5 = window_start;
 
       accumulator1 = 0;
-      accumulator2 = window_start;
-      accumulator3 = window_start;
-      accumulator4 = window_start;
-      accumulator5 = window_start;
+      accumulator2 = 0;
+      accumulator3 = 0;
+      accumulator4 = 0;
+      accumulator5 = 0;
     } else {
-      s3_trigger = !s3 && ls3 && !continuous;
+      if (continuous) {
+        if (!s3) {
+          if (p < mp) {
+            pr |= P3;
+            p++;
+          }
+        } else if (pr & P3) {
+          pr &= NP3;
+          p--;
+        }
+      } else {
+        s3_trigger = !s3 && ls3;
+      }
     }
   }
 
-  if (d4 != ls4 && (millis() - ld4) > debounceDelay) {
+  if (d4 == ls4) {
+    ld4 = millis();
+  } else if (millis() - ld4 > debounceDelay) {
     s4 = d4;
-    s4_trigger = !s4 && ls4 && !continuous;
+
+    if (!s7 && !s4) {
+      reverse = !reverse;
+
+      index1 = window_end;
+      index2 = window_end;
+      index3 = window_end;
+      index4 = window_end;
+      index5 = window_end;
+
+      accumulator1 = 0;
+      accumulator2 = 0;
+      accumulator3 = 0;
+      accumulator4 = 0;
+      accumulator5 = 0;
+    } else {
+      if (continuous) {
+        if (!s4) {
+          if (p < mp) {
+            pr |= P4;
+            p++;
+          }
+        } else if (pr & P4) {
+          pr &= NP4;
+          p--;
+        }
+      } else {
+        s4_trigger = !s4 && ls4;
+      }
+    }
   }
 
-  if (d5 != ls5 && (millis() - ld5) > debounceDelay) {
+  if (d5 == ls5) {
+    ld5 = millis();
+  } else if (millis() - ld5 > debounceDelay) {
     s5 = d5;
-    s5_trigger = !s5 && ls5 && !continuous;
+
+    if (continuous) {
+      if (!s5) {
+        if (p < mp) {
+          pr |= P5;
+          p++;
+        }
+      } else if (pr & P5) {
+        pr &= NP5;
+        p--;
+      }
+    } else {
+      s5_trigger = !s5 && ls5;
+    }
   }
 
-  if (d6 != ls6 && (millis() - ld6) > debounceDelay) {
+  if (d6 == ls6) {
+    ld6 = millis();
+  } else if (millis() - ld6 > debounceDelay) {
     s6 = d6;
-    s6_trigger = !s6 && ls6 && !continuous;
+
+    if (continuous) {
+      if (!s6) {
+        if (p < mp) {
+          pr |= P6;
+          p++;
+        }
+      } else if (pr & P6) {
+        pr &= NP6;
+        p--;
+      }
+    } else {
+      s6_trigger = !s6 && ls6;
+    }
   }
 
   if (d7 == ls7) {
@@ -451,7 +638,7 @@ void loop(void) {
   } else if (millis() - ld7 > debounceDelay) {
     s7 = d7;
   }
-  
+
   ls1 = s1;
   ls2 = s2;
   ls3 = s3;
@@ -460,15 +647,24 @@ void loop(void) {
   ls6 = s6;
   ls7 = s7;
 
-  window_start = 0;
-  window_end = sample_length;
-  
   // analogRead should be able to do 0-1023 for values
   // but my potentiometers only get up to ~855
+  //
+  // ALSO only take analogReads when not recording, they won't
+  // work when recording because of the adc register configuration
   if (!recording) {
-    window_start = 0; // map(analogRead(A6), 0, 855, 0, sample_length);
-    window_end   = sample_length;// map(analogRead(A7), 0, 855, 0, sample_length);
+    window_start = map(analogRead(A6), 0, 855, 0, sample_length);
+    window_end = map(analogRead(A7), 0, 855, 0, sample_length);
   }
+}
+
+void write_ram_byte(uint16_t address) {
+}
+
+void write_ram_page(uint16_t page_index) {
+}
+
+void read_ram_byte(uint16_t address) {
 }
 
 void write_eeprom_page(uint16_t page_index) {
@@ -513,7 +709,7 @@ byte read_eeprom_byte(uint16_t address) {
   // get value at address ("1" value doesn't matter, just have to send something to get a response)
   byte val = SPI.transfer(1);
 
-  // CS back high
+  // CS back high to end action
   digitalWrite(9, HIGH);
 
   return val;
