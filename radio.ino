@@ -1,8 +1,5 @@
 #include <SPI.h>
 
-// old
-// sample3 = (pgm_read_byte(&sample_table[index3]) - 127) * (s3_latch || (continuous && !s3));
-
 #define EEPROM_WRITE_ENABLE 6
 #define EEPROM_WRITE 2
 #define EEPROM_READ 3
@@ -22,35 +19,63 @@
 #define NP5 0b11110111
 #define NP6 0b11111011
 
-byte s1, s1_trigger, s1_latch;
+byte s1, s1_trigger, s1_latch, bd1;
 byte ls1 = HIGH;
 unsigned long ld1 = 0;
 
-byte s2, s2_trigger, s2_latch;
+byte s2, s2_trigger, s2_latch, bd2;
 byte ls2 = HIGH;
 unsigned long ld2 = 0;
 
-byte s3, s3_trigger, s3_latch;
+byte s3, s3_trigger, s3_latch, bd3;
 byte ls3 = HIGH;
 unsigned long ld3 = 0;
 
-byte s4, s4_trigger, s4_latch;
+byte s4, s4_trigger, s4_latch, bd4;
 byte ls4 = HIGH;
 unsigned long ld4 = 0;
 
-byte s5, s5_trigger, s5_latch;
+byte s5, s5_trigger, s5_latch, bd5;
 byte ls5 = HIGH;
 unsigned long ld5 = 0;
 
-byte s6, s6_trigger, s6_latch;
+byte s6, s6_trigger, s6_latch, bd6;
 byte ls6 = HIGH;
 unsigned long ld6 = 0;
 
-byte s7;
+byte s7, s7_trigger, s7_latch, bd7;
 byte ls7 = HIGH;
 unsigned long ld7 = 0;
 
-byte continuous, reverse;
+byte s8, s8_trigger, s8_latch, bd8;
+byte ls8 = HIGH;
+unsigned long ld8 = 0;
+
+byte s9, s9_trigger, s9_latch, bd9;
+byte ls9 = HIGH;
+unsigned long ld9 = 0;
+
+byte s10, s10_trigger, s10_latch, bd10;
+byte ls10 = HIGH;
+unsigned long ld10 = 0;
+
+byte s11, s11_trigger, s11_latch, bd11;
+byte ls11 = HIGH;
+unsigned long ld11 = 0;
+
+byte s12, s12_trigger, s12_latch, bd12;
+byte ls12 = HIGH;
+unsigned long ld12 = 0;
+
+byte s13, s13_trigger, s13_latch, bd13;
+byte ls13 = HIGH;
+unsigned long ld13 = 0;
+
+byte sf;
+byte lsf = HIGH;
+unsigned long ldf = 0;
+
+byte continuous, reverse, boomerang = 0;
 
 const unsigned long debounceDelay = 50;
 
@@ -71,9 +96,9 @@ byte minor_seventh = round(pitch * 1.781797);
 byte major_seventh = round(pitch * 1.887749);
 byte octave = round(pitch * 2.0);
 
-uint16_t index1, index2, index3, index4, index5, index6, window_start, window_end;
-int sample1, sample2, sample3, sample4, sample5, sample6;
-uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5, accumulator6;
+uint16_t index1, index2, index3, index4, index5, index6, index7, index8, index9, index10, index11, index12, index13, window_start, window_end;
+int sample1, sample2, sample3, sample4, sample5, sample6, sample7, sample8, sample9, sample10, sample11, sample12, sample13;
+uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5, accumulator6, accumulator7, accumulator8, accumulator9, accumulator10, accumulator11, accumulator12, accumulator13;
 
 int delay_sample;
 byte delay_buffer[800] = { 0 };
@@ -86,9 +111,9 @@ uint16_t sample_length, record_page_index;
 byte record_buffer[64] = { 0 };
 
 byte initial_adcsra, initial_admux;
-byte p;   // keeps count of how many samples are playing at any one time
-byte mp = 3;  // max number of samples that can be playing at one time (based on speed of byte read from ram...too many and it'll choke!)
-byte pr;  // "playing register" -> use bits to track which pitches are active to avoid doubling the count...just do 8 for now...
+byte p;       // keeps count of how many samples are playing at any one time
+byte mp = 3;  // max number of samples that can be playing at one time (based on speed of byte read from storage...too many and it'll choke!)
+byte pr;      // "playing register" -> use bits to track which pitches are active to avoid doubling the count...just do 8 for now...
 
 void setup(void) {
   cli();
@@ -209,14 +234,24 @@ ISR(TIMER2_COMPA_vect) {
     }
   }
 
-  if (p < mp && !continuous && s6_trigger) {
+  if (!continuous && s6_trigger) {
     if (pr & P6) {
-      index6 = window_start;
+      if (reverse) {
+        index6 = window_end;
+      } else {
+        index6 = window_start;
+      }
+
       accumulator6 = 0;
       s6_latch = 1;
       s6_trigger = 0;
     } else if (p < mp) {
-      index6 = window_start;
+      if (reverse) {
+        index6 = window_end;
+      } else {
+        index6 = window_start;
+      }
+
       accumulator6 = 0;
       s6_latch = 1;
       s6_trigger = 0;
@@ -365,16 +400,58 @@ ISR(TIMER2_COMPA_vect) {
 
   if (continuous || s6_latch) {
     accumulator6 += perfect_fourth;
-    index6 = window_start + (accumulator6 >> (6));
 
-    if (index6 > window_end) {
-      index6 = window_start;
-      accumulator6 = 0;
-      s6_latch = 0;
+    if (reverse) {
+      index6 = window_end - (accumulator6 >> (6));
 
-      if (!continuous) {
-        pr &= NP6;
-        p--;
+      if (index6 < window_start) {
+        index6 = window_end;
+        accumulator6 = 0;
+        s6_latch = 0;
+
+        if (!continuous) {
+          pr &= NP6;
+          p--;
+        }
+      }
+    } else {
+      if (boomerang) {
+        if (bd6) {
+          index6 = window_end - (accumulator6 >> (6));
+
+          if (index6 < window_start) {
+            index6 = window_start;
+            accumulator6 = 0;
+            s6_latch = 0;
+            bd6 = 0;
+
+            if (!continuous) {
+              pr &= NP6;
+              p--;
+            }
+          }
+        } else {
+          index6 = window_start + (accumulator6 >> (6));
+
+          if (index6 > window_end) {
+            bd6 = 1;
+            index6 = window_end;
+            accumulator6 = 0;
+          }
+        }
+      } else {
+        index6 = window_start + (accumulator6 >> (6));
+
+        if (index6 > window_end) {
+          index6 = window_start;
+          accumulator6 = 0;
+          s6_latch = 0;
+
+          if (!continuous) {
+            pr &= NP6;
+            p--;
+          }
+        }
       }
     }
   }
@@ -412,7 +489,7 @@ void disable_record() {
 
   // reset ADC register values to...defaults??
   ADCSRA = initial_adcsra;
-  ADMUX  = initial_admux;
+  ADMUX = initial_admux;
 
   if (record_page_index > 0) {
     sample_length = record_page_index * EEPROM_PAGE_SIZE;  // clip to last full page
@@ -436,7 +513,6 @@ void disable_record() {
 }
 
 ISR(ADC_vect) {
-  // Serial.println(ADCH);
   record_buffer[record_buffer_index] = ADCH;
 
   record_buffer_index++;
@@ -455,7 +531,7 @@ void loop(void) {
   byte d4 = digitalRead(5);
   byte d5 = digitalRead(6);
   byte d6 = digitalRead(7);
-  byte d7 = digitalRead(8);
+  byte df = digitalRead(8);
 
   if (d1 == ls1) {
     if (continuous && !s1 && (pr & NP1) && p < mp) {
@@ -467,7 +543,7 @@ void loop(void) {
   } else if (millis() - ld1 > debounceDelay) {
     s1 = d1;
 
-    if (!s7) {
+    if (!sf) {
       if (!s1) {
         recording = 1;
         record_buffer_index = 0;
@@ -504,7 +580,7 @@ void loop(void) {
   } else if (millis() - ld2 > debounceDelay) {
     s2 = d2;
 
-    if (!s7 && !s2) {
+    if (!sf && !s2) {
       delay_active = !delay_active;
       delay_buffer_index = 0;
     } else {
@@ -535,7 +611,7 @@ void loop(void) {
   } else if (millis() - ld3 > debounceDelay) {
     s3 = d3;
 
-    if (!s7 && !s3) {
+    if (!sf && !s3) {
       continuous = !continuous;
 
       if (continuous) {
@@ -544,17 +620,7 @@ void loop(void) {
         mp = 3;
       }
 
-      index1 = window_start;
-      index2 = window_start;
-      index3 = window_start;
-      index4 = window_start;
-      index5 = window_start;
-
-      accumulator1 = 0;
-      accumulator2 = 0;
-      accumulator3 = 0;
-      accumulator4 = 0;
-      accumulator5 = 0;
+      reset_indexes_and_accumulators(0);
     } else {
       if (continuous) {
         if (!s3) {
@@ -582,20 +648,10 @@ void loop(void) {
   } else if (millis() - ld4 > debounceDelay) {
     s4 = d4;
 
-    if (!s7 && !s4) {
+    if (!sf && !s4) {
       reverse = !reverse;
 
-      index1 = window_end;
-      index2 = window_end;
-      index3 = window_end;
-      index4 = window_end;
-      index5 = window_end;
-
-      accumulator1 = 0;
-      accumulator2 = 0;
-      accumulator3 = 0;
-      accumulator4 = 0;
-      accumulator5 = 0;
+      reset_indexes_and_accumulators(1);
     } else {
       if (continuous) {
         if (!s4) {
@@ -623,18 +679,24 @@ void loop(void) {
   } else if (millis() - ld5 > debounceDelay) {
     s5 = d5;
 
-    if (continuous) {
-      if (!s5) {
-        if (p < mp) {
-          pr |= P5;
-          p++;
-        }
-      } else if (pr & P5) {
-        pr &= NP5;
-        p--;
-      }
+    if (!sf && !s5) {
+      boomerang = !boomerang;
+
+      reset_indexes_and_accumulators(0);
     } else {
-      s5_trigger = !s5 && ls5;
+      if (continuous) {
+        if (!s5) {
+          if (p < mp) {
+            pr |= P5;
+            p++;
+          }
+        } else if (pr & P5) {
+          pr &= NP5;
+          p--;
+        }
+      } else {
+        s5_trigger = !s5 && ls5;
+      }
     }
   }
 
@@ -663,10 +725,10 @@ void loop(void) {
     }
   }
 
-  if (d7 == ls7) {
-    ld7 = millis();
-  } else if (millis() - ld7 > debounceDelay) {
-    s7 = d7;
+  if (df == lsf) {
+    ldf = millis();
+  } else if (millis() - ldf > debounceDelay) {
+    sf = df;
   }
 
   ls1 = s1;
@@ -675,7 +737,7 @@ void loop(void) {
   ls4 = s4;
   ls5 = s5;
   ls6 = s6;
-  ls7 = s7;
+  lsf = sf;
 
   // analogRead should be able to do 0-1023 for values
   // but my potentiometers only get up to ~855
@@ -686,6 +748,31 @@ void loop(void) {
     window_start = map(analogRead(A6), 0, 855, 0, sample_length);
     window_end = map(analogRead(A7), 0, 855, 0, sample_length);
   }
+}
+
+void reset_indexes_and_accumulators(byte reverse) {
+  if (reverse) {
+    index1 = window_end;
+    index2 = window_end;
+    index3 = window_end;
+    index4 = window_end;
+    index5 = window_end;
+    index6 = window_end;
+  } else {
+    index1 = window_start;
+    index2 = window_start;
+    index3 = window_start;
+    index4 = window_start;
+    index5 = window_start;
+    index6 = window_start;
+  }
+
+  accumulator1 = 0;
+  accumulator2 = 0;
+  accumulator3 = 0;
+  accumulator4 = 0;
+  accumulator5 = 0;
+  accumulator6 = 0;
 }
 
 void write_ram_byte(uint16_t address) {
