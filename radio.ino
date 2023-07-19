@@ -118,8 +118,6 @@ byte mp = 3;                         // max number of samples that can be playin
 void setup(void) {
   cli();  // disable Arduino interrupts to configure things without being interrupted
 
-  // Serial.begin(9600);
-
   // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1
   pinMode(0, INPUT_PULLUP);
   pinMode(1, INPUT_PULLUP);
@@ -130,6 +128,7 @@ void setup(void) {
   pinMode(6, INPUT_PULLUP);
   pinMode(7, INPUT_PULLUP);
   pinMode(8, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
 
   pinMode(A5, OUTPUT);  // You can use analog pins as digital pins if you want
 
@@ -287,6 +286,20 @@ ISR(TIMER2_COMPA_vect) {
     }
   }
 
+  if (s9_latch || (continuous && !s9)) {
+    sample_out_temp += read_ram_byte(index9) - 127;
+
+    accumulator9 += minor_sixth;
+
+    index9 = window_start + (accumulator9 >> (6));
+
+    if (index9 > window_end) {
+      index9 = window_start;
+      accumulator9 = 0;
+      s9_latch = 0;
+    }
+  }
+
   if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
 
   // if (am) {
@@ -314,7 +327,7 @@ ISR(TIMER2_COMPA_vect) {
   // NEXT 8 are the sample (4 bits on the 4 LSb of byte 1, 4 bits on the MSb of byte 2). Last 4 bits are "don't care" bits.
   // So, use SPI "transfer16" method to send it all as one 16 bit word.
   SPI.transfer16(0b0111000000000000 | (sample_out << 4));
-  digitalWrite(10, HIGH); // CS pin for DAC HIGH to end transaction
+  digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
 
   // if (am) {
   //   sine_accumulator += 440 << 2;
@@ -381,6 +394,7 @@ void loop(void) {
   byte d6 = digitalRead(7);
   byte d7 = digitalRead(0);
   byte d8 = digitalRead(1);
+  byte d9 = digitalRead(A1);
   byte df = digitalRead(8);
 
   unsigned long time = millis();
@@ -514,6 +528,18 @@ void loop(void) {
     }
   }
 
+  if (d9 == ls9) {
+    ld9 = time;
+  } else if (time - ld9 > debounceDelay) {
+    s9 = d9;
+
+    if (!s9) {
+      index9 = window_start;
+      accumulator9 = 0;
+      s9_latch = 1;
+    }
+  }
+
   if (df == lsf) {
     ldf = time;
   } else if (time - ldf > debounceDelay) {
@@ -528,13 +554,14 @@ void loop(void) {
   ls6 = s6;
   ls7 = s7;
   ls8 = s8;
+  ls9 = s9;
 
   lsf = sf;
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
   if (!recording) {
     window_start = map(analogRead(A6), 0, 1024, 0, sample_length);
-    window_end =   map(analogRead(A7), 0, 1024, 0, sample_length);
+    window_end = map(analogRead(A7), 0, 1024, 0, sample_length);
   }
 }
 
@@ -592,11 +619,11 @@ void set_ram_sequential_mode() {
 byte read_ram_byte(uint16_t address) {
   byte sample;
 
-  digitalWrite(9, LOW);         // Pull CS of RAM low to begin interaction
-  SPI.transfer(3);              // Instruction for READ is "3"
+  digitalWrite(9, LOW);  // Pull CS of RAM low to begin interaction
+  SPI.transfer(3);       // Instruction for READ is "3"
   SPI.transfer16(address);
-  sample = SPI.transfer(0);     // send the byte of sample (passing in zero is inconsequential, it could be a 1 or whatever)
-  digitalWrite(9, HIGH);        // CS goes high to end interaction
+  sample = SPI.transfer(0);  // send the byte of sample (passing in zero is inconsequential, it could be a 1 or whatever)
+  digitalWrite(9, HIGH);     // CS goes high to end interaction
 
   return sample;
 }
