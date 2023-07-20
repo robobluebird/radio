@@ -115,455 +115,9 @@ byte recording;          // a boolean byte where 0 = false and 1 = true...are we
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
 byte mp = 3;                         // max number of samples that can be playing at one time (based on speed of byte read from storage...too many and it'll choke!)
 
-void setup(void) {
-  cli();  // disable Arduino interrupts to configure things without being interrupted
-
-  // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1
-  pinMode(0, INPUT_PULLUP);
-  pinMode(1, INPUT_PULLUP);
-  pinMode(2, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
-  pinMode(4, INPUT_PULLUP);
-  pinMode(5, INPUT_PULLUP);
-  pinMode(6, INPUT_PULLUP);
-  pinMode(7, INPUT_PULLUP);
-  pinMode(8, INPUT_PULLUP);
-  pinMode(A1, INPUT_PULLUP);
-
-  pinMode(A5, OUTPUT);  // You can use analog pins as digital pins if you want
-
-  // CS pin for eeprom
-  pinMode(9, OUTPUT);
-  digitalWrite(9, HIGH);  // bring it HIGH right away because LOW activates the chip (I don't make the rules)
-
-  SPI.begin();  // Both the RAM and the DAC use SPI
-
-  // Below: Set up the record/playback interrupt. It's annoying to remember all the register names.
-  // Long story short, when the Arduino is on an interrupt will trigger 8000 times per second (holy cow)
-
-  TCCR2A = 0;  // set entire TCCR2A register to 0
-  TCCR2B = 0;  // same for TCCR2B
-  TCNT2 = 0;   // initialize counter value to 0
-
-  OCR2A = 249;              // set compare match register for 8khz increments (16,000,000 Hz / (8000 Hz * 8 bits per sample) - 1)
-  TCCR2A |= (1 << WGM21);   // turn on CTC mode
-  TCCR2B |= (1 << CS21);    // Set CS21 bit for 8 prescaler
-  TIMSK2 |= (1 << OCIE2A);  // enable timer compare interrupt
-
-  // capture initial values of ADC registers to restore when recording halts
-  initial_adcsra = ADCSRA;
-  initial_admux = ADMUX;
-
-  sei();  // re-enable interrupts (let's do this)
-}
-
-ISR(TIMER2_COMPA_vect) {
-
-  // "recording" boolean is set to 1 when recording starts
-  // when recording ends, "recording" boolean is set to 0, so the rest of the code in
-  // the interrupt will run instead
-  if (recording) {
-
-    // in sequential mode the RAM handles updating the address pointer after every write
-    // so all we have to do is transfer another byte!
-    write_ram_byte_sequential(ADCH);
-
-    // early return from timer interrupt
-    return;
-  }
-
-  // everything below here in the interrupt is playback code
-
-  if (s1_latch || (continuous && !s1)) {
-    sample_out_temp += read_ram_byte(index1) - 127;
-
-    accumulator1 += pitch;
-
-    index1 = window_start + (accumulator1 >> (6));
-
-    if (index1 > window_end) {
-      index1 = window_start;
-      accumulator1 = 0;
-      s1_latch = 0;
-    }
-  }
-
-  if (s2_latch || (continuous && !s2)) {
-    sample_out_temp += read_ram_byte(index2) - 127;
-
-    accumulator2 += minor_second;
-
-    index2 = window_start + (accumulator2 >> (6));
-
-    if (index2 > window_end) {
-      index2 = window_start;
-      accumulator2 = 0;
-      s2_latch = 0;
-    }
-  }
-
-  if (s3_latch || (continuous && !s3)) {
-    sample_out_temp += read_ram_byte(index3) - 127;
-
-    accumulator3 += major_second;
-
-    index3 = window_start + (accumulator3 >> (6));
-
-    if (index3 > window_end) {
-      index3 = window_start;
-      accumulator3 = 0;
-      s3_latch = 0;
-    }
-  }
-
-  if (s4_latch || (continuous && !s4)) {
-    sample_out_temp += read_ram_byte(index4) - 127;
-
-    accumulator4 += minor_third;
-
-    index4 = window_start + (accumulator4 >> (6));
-
-    if (index4 > window_end) {
-      index4 = window_start;
-      accumulator4 = 0;
-      s4_latch = 0;
-    }
-  }
-
-  if (s5_latch || (continuous && !s5)) {
-    sample_out_temp += read_ram_byte(index5) - 127;
-
-    accumulator5 += major_third;
-
-    index5 = window_start + (accumulator5 >> (6));
-
-    if (index5 > window_end) {
-      index5 = window_start;
-      accumulator5 = 0;
-      s5_latch = 0;
-    }
-  }
-
-  if (s6_latch || (continuous && !s6)) {
-    sample_out_temp += read_ram_byte(index6) - 127;
-
-    accumulator6 += perfect_fourth;
-
-    index6 = window_start + (accumulator6 >> (6));
-
-    if (index6 > window_end) {
-      index6 = window_start;
-      accumulator6 = 0;
-      s6_latch = 0;
-    }
-  }
-
-  if (s7_latch || (continuous && !s7)) {
-    sample_out_temp += read_ram_byte(index7) - 127;
-
-    accumulator7 += tritone;
-
-    index7 = window_start + (accumulator7 >> (6));
-
-    if (index7 > window_end) {
-      index7 = window_start;
-      accumulator7 = 0;
-      s7_latch = 0;
-    }
-  }
-
-  if (s8_latch || (continuous && !s8)) {
-    sample_out_temp += read_ram_byte(index8) - 127;
-
-    accumulator8 += perfect_fifth;
-
-    index8 = window_start + (accumulator8 >> (6));
-
-    if (index8 > window_end) {
-      index8 = window_start;
-      accumulator8 = 0;
-      s8_latch = 0;
-    }
-  }
-
-  if (s9_latch || (continuous && !s9)) {
-    sample_out_temp += read_ram_byte(index9) - 127;
-
-    accumulator9 += minor_sixth;
-
-    index9 = window_start + (accumulator9 >> (6));
-
-    if (index9 > window_end) {
-      index9 = window_start;
-      accumulator9 = 0;
-      s9_latch = 0;
-    }
-  }
-
-  if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
-
-  // if (am) {
-  //   // sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) * (sample1) / 255) << 1;
-  // } else {
-  // }
-
-  sample_out_temp = (sample_out_temp >> 1) + 127;
-
-  if (sample_out_temp > 255) {
-    sample_out_temp -= (sample_out_temp - 255) << 1;
-  }
-
-  if (sample_out_temp < 0) {
-    sample_out_temp += sample_out_temp * -2;
-  }
-
-  sample_out = sample_out_temp;
-
-  delay_buffer[delay_buffer_index] = sample_out >> 1;
-
-  digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
-
-  // MCP4901 write instruction is 16 bits. 15th bit (first bit in MSb) is always a 0. Next three are config...look up them up in the datasheet.
-  // NEXT 8 are the sample (4 bits on the 4 LSb of byte 1, 4 bits on the MSb of byte 2). Last 4 bits are "don't care" bits.
-  // So, use SPI "transfer16" method to send it all as one 16 bit word.
-  SPI.transfer16(0b0111000000000000 | (sample_out << 4));
-  digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
-
-  // if (am) {
-  //   sine_accumulator += 440 << 2;
-  //   sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
-  // }
-
-  delay_buffer_index++;
-  if (delay_buffer_index == 1000) delay_buffer_index = 0;
-}
-
-void enable_record() {
-  cli();  // disable interrupt for playback timer
-
-  TIMSK2 |= (0 << OCIE2A);  // disable playback
-
-  ADCSRA = 0;  // clear adc "a" register
-
-  // set ADMUX to inscrutible value... 01100000... ref voltage to vref, left shift capture, read from A0
-  // setting it this way because I don't know where to find the arduino constants for ADMUX[3:0] :-)
-  ADMUX = 96;
-
-  // set ADC clock with 128 prescaler -> 16 mHz/128 = 125 kHz
-  // 125 kHz / 13 clock cycles per sample (minus first sample) = ~9615 samples per second
-  // this is the smallest value possible with the prescaler config
-  // we will actually be recording at 8000 samples per second
-  ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
-
-  ADCSRA |= (1 << ADATE);  // enable auto trigger
-  // ADCSRA |= (1 << ADIE);   // enable interrupts
-  ADCSRA |= (1 << ADEN);  // enable ADC
-  ADCSRA |= (1 << ADSC);  // start ADC measurements
-
-  set_ram_sequential_mode();
-  begin_writing_ram_sequential();
-
-  digitalWrite(A5, HIGH);  // "recording" LED on
-
-  sei();
-}
-
-void disable_record() {
-  cli();
-
-  // reset ADC register values to...defaults??
-  ADCSRA = initial_adcsra;
-  ADMUX = initial_admux;
-
-  end_writing_ram_sequential();
-  set_ram_byte_mode();
-
-  TIMSK2 |= (1 << OCIE2A);  // enable playback
-
-  digitalWrite(A5, LOW);  // "recording" LED off
-
-  sei();
-}
-
-void loop(void) {
-  byte d1 = digitalRead(2);
-  byte d2 = digitalRead(3);
-  byte d3 = digitalRead(4);
-  byte d4 = digitalRead(5);
-  byte d5 = digitalRead(6);
-  byte d6 = digitalRead(7);
-  byte d7 = digitalRead(0);
-  byte d8 = digitalRead(1);
-  byte d9 = digitalRead(A1);
-  byte df = digitalRead(8);
-
-  unsigned long time = millis();
-
-  if (d1 == ls1) {
-    ld1 = time;
-  } else if (time - ld1 > debounceDelay) {
-    s1 = d1;
-
-    if (!s1) {
-      if (!sf) {
-        enable_record();
-      } else {
-        index1 = window_start;
-        accumulator1 = 0;
-        s1_latch = 1;
-      }
-    } else {
-      if (!sf) disable_record();
-    }
-  }
-
-  if (d2 == ls2) {
-    ld2 = time;
-  } else if (time - ld2 > debounceDelay) {
-    s2 = d2;
-
-    if (!s2) {
-      if (!sf) {
-        delay_active = !delay_active;
-        delay_buffer_index = 0;
-      } else {
-        index2 = window_start;
-        accumulator2 = 0;
-        s2_latch = 1;
-      }
-    }
-  }
-
-  if (d3 == ls3) {
-    ld3 = time;
-  } else if (time - ld3 > debounceDelay) {
-    s3 = d3;
-
-    if (!s3) {
-      if (!sf) {
-        continuous = !continuous;
-        reset_indexes_and_accumulators(0);
-      } else {
-        index3 = window_start;
-        accumulator3 = 0;
-        s3_latch = 1;
-      }
-    }
-  }
-
-  if (d4 == ls4) {
-    ld4 = time;
-  } else if (time - ld4 > debounceDelay) {
-    s4 = d4;
-
-    if (!s4) {
-      if (!sf) {
-        reverse = !reverse;
-        boomerang = 0;
-        reset_indexes_and_accumulators(1);
-      } else {
-        index4 = window_start;
-        accumulator4 = 0;
-        s4_latch = 1;
-      }
-    }
-  }
-
-  if (d5 == ls5) {
-    ld5 = time;
-  } else if (time - ld5 > debounceDelay) {
-    s5 = d5;
-
-    if (!s5) {
-      if (!sf) {
-        boomerang = !boomerang;
-        reverse = 0;
-        reset_indexes_and_accumulators(0);
-      } else {
-        index5 = window_start;
-        accumulator5 = 0;
-        s5_latch = 1;
-      }
-    }
-  }
-
-  if (d6 == ls6) {
-    ld6 = time;
-  } else if (time - ld6 > debounceDelay) {
-    s6 = d6;
-
-    if (!s6) {
-      if (!sf) {
-        am = !am;
-        reset_indexes_and_accumulators(0);
-      } else {
-        index6 = window_start;
-        accumulator6 = 0;
-        s6_latch = 1;
-      }
-    }
-  }
-
-  if (d7 == ls7) {
-    ld7 = time;
-  } else if (time - ld7 > debounceDelay) {
-    s7 = d7;
-
-    if (!s7) {
-      index7 = window_start;
-      accumulator7 = 0;
-      s7_latch = 1;
-    }
-  }
-
-  if (d8 == ls8) {
-    ld8 = time;
-  } else if (time - ld8 > debounceDelay) {
-    s8 = d8;
-
-    if (!s8) {
-      index8 = window_start;
-      accumulator8 = 0;
-      s8_latch = 1;
-    }
-  }
-
-  if (d9 == ls9) {
-    ld9 = time;
-  } else if (time - ld9 > debounceDelay) {
-    s9 = d9;
-
-    if (!s9) {
-      index9 = window_start;
-      accumulator9 = 0;
-      s9_latch = 1;
-    }
-  }
-
-  if (df == lsf) {
-    ldf = time;
-  } else if (time - ldf > debounceDelay) {
-    sf = df;
-  }
-
-  ls1 = s1;
-  ls2 = s2;
-  ls3 = s3;
-  ls4 = s4;
-  ls5 = s5;
-  ls6 = s6;
-  ls7 = s7;
-  ls8 = s8;
-  ls9 = s9;
-
-  lsf = sf;
-
-  // only take analogReads when not recording, it won't work when recording because of the adc register configuration
-  if (!recording) {
-    window_start = map(analogRead(A6), 0, 1024, 0, sample_length);
-    window_end = map(analogRead(A7), 0, 1024, 0, sample_length);
-  }
-}
+bool (*note1)() = NULL;
+bool (*note2)() = NULL;
+bool (*note3)() = NULL;
 
 void reset_indexes_and_accumulators(byte reverse) {
   if (reverse) {
@@ -655,4 +209,506 @@ void end_writing_ram_sequential() {
   digitalWrite(9, HIGH);  // Pull CS of RAM to HIGH to end this interaction
 
   recording = 0;  // boolean "0"
+}
+
+bool update1() {
+  sample_out_temp += read_ram_byte(index1) - 127;
+
+  accumulator1 += pitch;
+
+  index1 = window_start + (accumulator1 >> (6));
+
+  if (index1 > window_end) {
+    index1 = window_start;
+    accumulator1 = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update2() {
+  sample_out_temp += read_ram_byte(index2) - 127;
+
+  accumulator2 += minor_second;
+
+  index2 = window_start + (accumulator2 >> (6));
+
+  if (index2 > window_end) {
+    index2 = window_start;
+    accumulator2 = 0;
+    s2_latch = 0;
+
+    return true;
+  }
+
+  return false;
+}
+
+bool update3() {
+  sample_out_temp += read_ram_byte(index3) - 127;
+
+  accumulator3 += major_second;
+
+  index3 = window_start + (accumulator3 >> (6));
+
+  if (index3 > window_end) {
+    index3 = window_start;
+    accumulator3 = 0;
+    s3_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update4() {
+  sample_out_temp += read_ram_byte(index4) - 127;
+
+  accumulator4 += minor_third;
+
+  index4 = window_start + (accumulator4 >> (6));
+
+  if (index4 > window_end) {
+    index4 = window_start;
+    accumulator4 = 0;
+    s4_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update5() {
+  sample_out_temp += read_ram_byte(index5) - 127;
+
+  accumulator5 += major_third;
+
+  index5 = window_start + (accumulator5 >> (6));
+
+  if (index5 > window_end) {
+    index5 = window_start;
+    accumulator5 = 0;
+    s5_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update6() {
+  sample_out_temp += read_ram_byte(index6) - 127;
+
+  accumulator6 += perfect_fourth;
+
+  index6 = window_start + (accumulator6 >> (6));
+
+  if (index6 > window_end) {
+    index6 = window_start;
+    accumulator6 = 0;
+    s6_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update7() {
+  sample_out_temp += read_ram_byte(index7) - 127;
+
+  accumulator7 += tritone;
+
+  index7 = window_start + (accumulator7 >> (6));
+
+  if (index7 > window_end) {
+    index7 = window_start;
+    accumulator7 = 0;
+    s7_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update8() {
+  sample_out_temp += read_ram_byte(index8) - 127;
+
+  accumulator8 += perfect_fifth;
+
+  index8 = window_start + (accumulator8 >> (6));
+
+  if (index8 > window_end) {
+    index8 = window_start;
+    accumulator8 = 0;
+    s8_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+bool update9() {
+  sample_out_temp += read_ram_byte(index9) - 127;
+
+  accumulator9 += minor_sixth;
+
+  index9 = window_start + (accumulator9 >> (6));
+
+  if (index9 > window_end) {
+    index9 = window_start;
+    accumulator9 = 0;
+    s9_latch = 0;
+    return true;
+  }
+
+  return false;
+}
+
+void setup(void) {
+  cli();  // disable Arduino interrupts to configure things without being interrupted
+
+  // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1
+  pinMode(0, INPUT_PULLUP);
+  pinMode(1, INPUT_PULLUP);
+  pinMode(2, INPUT_PULLUP);
+  pinMode(3, INPUT_PULLUP);
+  pinMode(4, INPUT_PULLUP);
+  pinMode(5, INPUT_PULLUP);
+  pinMode(6, INPUT_PULLUP);
+  pinMode(7, INPUT_PULLUP);
+  pinMode(8, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
+
+  pinMode(A5, OUTPUT);  // You can use analog pins as digital pins if you want
+
+  // CS pin for eeprom
+  pinMode(9, OUTPUT);
+  digitalWrite(9, HIGH);  // bring it HIGH right away because LOW activates the chip (I don't make the rules)
+
+  SPI.begin();  // Both the RAM and the DAC use SPI
+
+  // Below: Set up the record/playback interrupt. It's annoying to remember all the register names.
+  // Long story short, when the Arduino is on an interrupt will trigger 8000 times per second (holy cow)
+
+  TCCR2A = 0;  // set entire TCCR2A register to 0
+  TCCR2B = 0;  // same for TCCR2B
+  TCNT2 = 0;   // initialize counter value to 0
+
+  OCR2A = 249;              // set compare match register for 8khz increments (16,000,000 Hz / (8000 Hz * 8 bits per sample) - 1)
+  TCCR2A |= (1 << WGM21);   // turn on CTC mode
+  TCCR2B |= (1 << CS21);    // Set CS21 bit for 8 prescaler
+  TIMSK2 |= (1 << OCIE2A);  // enable timer compare interrupt
+
+  // capture initial values of ADC registers to restore when recording halts
+  initial_adcsra = ADCSRA;
+  initial_admux = ADMUX;
+
+  sei();  // re-enable interrupts (let's do this)
+}
+
+ISR(TIMER2_COMPA_vect) {
+
+  // "recording" boolean is set to 1 when recording starts
+  // when recording ends, "recording" boolean is set to 0, so the rest of the code in
+  // the interrupt will run instead
+  if (recording) {
+
+    // in sequential mode the RAM handles updating the address pointer after every write
+    // so all we have to do is transfer another byte!
+    write_ram_byte_sequential(ADCH);
+
+    // early return from timer interrupt
+    return;
+  }
+
+  // everything below here in the interrupt is playback code
+
+  if (note1 != NULL) {
+    if (note1()) note1 = NULL;
+  }
+
+  if (note2 != NULL) {
+    if (note2()) note2 = NULL;
+  }
+
+  if (note3 != NULL) {
+    if (note3()) note3 = NULL;
+  }
+
+  if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
+
+  // if (am) {
+  //   // sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) * (sample1) / 255) << 1;
+  // } else {
+  // }
+
+  sample_out_temp = (sample_out_temp >> 1) + 127;
+
+  if (sample_out_temp > 255) {
+    sample_out_temp -= (sample_out_temp - 255) << 1;
+  }
+
+  if (sample_out_temp < 0) {
+    sample_out_temp += sample_out_temp * -2;
+  }
+
+  sample_out = sample_out_temp;
+
+  delay_buffer[delay_buffer_index] = sample_out >> 1;
+
+  digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
+
+  // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
+  // Next three are config...look up them up in the datasheet.
+  // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
+  // So, use SPI "transfer16" method to send it all as one 16 bit word.
+  SPI.transfer16(0b0111000000000000 | (sample_out << 4));
+  digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
+
+  // if (am) {
+  //   sine_accumulator += 440 << 2;
+  //   sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
+  // }
+
+  delay_buffer_index++;
+  if (delay_buffer_index == 1000) delay_buffer_index = 0;
+}
+
+void enable_record() {
+  cli();  // disable interrupt for playback timer
+
+  TIMSK2 |= (0 << OCIE2A);  // disable playback
+
+  ADCSRA = 0;  // clear adc "a" register
+
+  // set ADMUX to inscrutible value... 01100000... ref voltage to vref, left shift capture, read from A0
+  // setting it this way because I don't know where to find the arduino constants for ADMUX[3:0] :-)
+  ADMUX = 96;
+
+  // set ADC clock with 128 prescaler -> 16 mHz/128 = 125 kHz
+  // 125 kHz / 13 clock cycles per sample (minus first sample) = ~9615 samples per second
+  // this is the smallest value possible with the prescaler config
+  // we will actually be recording at 8000 samples per second
+  ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+
+  ADCSRA |= (1 << ADATE);  // enable auto trigger
+  // ADCSRA |= (1 << ADIE);   // enable interrupts
+  ADCSRA |= (1 << ADEN);  // enable ADC
+  ADCSRA |= (1 << ADSC);  // start ADC measurements
+
+  set_ram_sequential_mode();
+  begin_writing_ram_sequential();
+
+  digitalWrite(A5, HIGH);  // "recording" LED on
+
+  sei();
+}
+
+void disable_record() {
+  cli();
+
+  // reset ADC register values to...defaults??
+  ADCSRA = initial_adcsra;
+  ADMUX = initial_admux;
+
+  end_writing_ram_sequential();
+  set_ram_byte_mode();
+
+  TIMSK2 |= (1 << OCIE2A);  // enable playback
+
+  digitalWrite(A5, LOW);  // "recording" LED off
+
+  sei();
+}
+
+void assign_note(bool (*f)()) {
+  if (note1 == f || note2 == f || note3 == f) return;
+  
+  if (note1 == NULL) {
+    note1 = f;
+  } else if (note2 == NULL) {
+    note2 = f;
+  } else if (note3 == NULL) {
+    note3 = f;
+  }
+};
+
+void loop(void) {
+  byte d1 = digitalRead(2);
+  byte d2 = digitalRead(3);
+  byte d3 = digitalRead(4);
+  byte d4 = digitalRead(5);
+  byte d5 = digitalRead(6);
+  byte d6 = digitalRead(7);
+  byte d7 = digitalRead(0);
+  byte d8 = digitalRead(1);
+  byte d9 = digitalRead(A1);
+  byte df = digitalRead(8);
+
+  unsigned long time = millis();
+
+  if (d1 == ls1) {
+    ld1 = time;
+  } else if (time - ld1 > debounceDelay) {
+    s1 = d1;
+
+    if (!s1) {
+      if (!sf) {
+        enable_record();
+      } else {
+        index1 = window_start;
+        accumulator1 = 0;
+        assign_note(update1);
+      }
+    } else {
+      if (!sf) disable_record();
+    }
+  }
+
+  if (d2 == ls2) {
+    ld2 = time;
+  } else if (time - ld2 > debounceDelay) {
+    s2 = d2;
+
+    if (!s2) {
+      if (!sf) {
+        delay_active = !delay_active;
+        delay_buffer_index = 0;
+      } else {
+        index2 = window_start;
+        accumulator2 = 0;
+        assign_note(update2);
+      }
+    }
+  }
+
+  if (d3 == ls3) {
+    ld3 = time;
+  } else if (time - ld3 > debounceDelay) {
+    s3 = d3;
+
+    if (!s3) {
+      if (!sf) {
+        continuous = !continuous;
+        reset_indexes_and_accumulators(0);
+      } else {
+        index3 = window_start;
+        accumulator3 = 0;
+        assign_note(update3);
+      }
+    }
+  }
+
+  if (d4 == ls4) {
+    ld4 = time;
+  } else if (time - ld4 > debounceDelay) {
+    s4 = d4;
+
+    if (!s4) {
+      if (!sf) {
+        reverse = !reverse;
+        boomerang = 0;
+        reset_indexes_and_accumulators(1);
+      } else {
+        index4 = window_start;
+        accumulator4 = 0;
+        assign_note(update4);
+      }
+    }
+  }
+
+  if (d5 == ls5) {
+    ld5 = time;
+  } else if (time - ld5 > debounceDelay) {
+    s5 = d5;
+
+    if (!s5) {
+      if (!sf) {
+        boomerang = !boomerang;
+        reverse = 0;
+        reset_indexes_and_accumulators(0);
+      } else {
+        index5 = window_start;
+        accumulator5 = 0;
+        assign_note(update5);
+      }
+    }
+  }
+
+  if (d6 == ls6) {
+    ld6 = time;
+  } else if (time - ld6 > debounceDelay) {
+    s6 = d6;
+
+    if (!s6) {
+      if (!sf) {
+        am = !am;
+        reset_indexes_and_accumulators(0);
+      } else {
+        index6 = window_start;
+        accumulator6 = 0;
+        assign_note(update6);
+      }
+    }
+  }
+
+  if (d7 == ls7) {
+    ld7 = time;
+  } else if (time - ld7 > debounceDelay) {
+    s7 = d7;
+
+    if (!s7) {
+      index7 = window_start;
+      accumulator7 = 0;
+      assign_note(update7);
+    }
+  }
+
+  if (d8 == ls8) {
+    ld8 = time;
+  } else if (time - ld8 > debounceDelay) {
+    s8 = d8;
+
+    if (!s8) {
+      index8 = window_start;
+      accumulator8 = 0;
+      assign_note(update8);
+    }
+  }
+
+  if (d9 == ls9) {
+    ld9 = time;
+  } else if (time - ld9 > debounceDelay) {
+    s9 = d9;
+
+    if (!s9) {
+      index9 = window_start;
+      accumulator9 = 0;
+      assign_note(update9);
+    }
+  }
+
+  if (df == lsf) {
+    ldf = time;
+  } else if (time - ldf > debounceDelay) {
+    sf = df;
+  }
+
+  ls1 = s1;
+  ls2 = s2;
+  ls3 = s3;
+  ls4 = s4;
+  ls5 = s5;
+  ls6 = s6;
+  ls7 = s7;
+  ls8 = s8;
+  ls9 = s9;
+
+  lsf = sf;
+
+  // only take analogReads when not recording, it won't work when recording because of the adc register configuration
+  if (!recording) {
+    window_start = map(analogRead(A6), 0, 1024, 0, sample_length);
+    window_end = map(analogRead(A7), 0, 1024, 0, sample_length);
+  }
 }
