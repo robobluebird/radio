@@ -65,9 +65,9 @@ byte s11, s11_latch, bd11;
 byte ls11 = HIGH;
 unsigned long ld11 = 0;
 
-// byte s12, s12_latch, bd12;
-// byte ls12 = HIGH;
-// unsigned long ld12 = 0;
+byte s12, s12_latch, bd12;
+byte ls12 = HIGH;
+unsigned long ld12 = 0;
 
 byte sf;                // state of function button
 byte lsf = HIGH;        // last state of function button
@@ -102,7 +102,8 @@ byte octave = round(pitch * 2.0);
 
 const unsigned long dds_tune = 4294967296 / 8000;  // dds thing for sine playback for A.M. mode, don't worry about it
 
-uint16_t index1, index2, index3, index4, index5, index6, index7, index8, index9, index10, index11, index12, index13, sine_index, window_start, window_end;
+uint16_t w1, e1, w2, e2, w3, e3, w4, e4, window_start, window_end;
+uint16_t index1, index2, index3, index4, index5, index6, index7, index8, index9, index10, index11, index12, index13, sine_index;
 uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5, accumulator6, accumulator7, accumulator8, accumulator9, accumulator10, accumulator11, accumulator12, accumulator13, sine_accumulator;
 
 // Audio "delay"...play back stuff that happened already, in a repeating way, to make a pseudo echo effect
@@ -185,12 +186,22 @@ bool update1() {
 
   accumulator1 += pitch;
 
-  index1 = window_start + (accumulator1 >> (6));
+  if (!reverse) {
+    index1 = window_start + (accumulator1 >> 6);
 
-  if (index1 > window_end) {
-    index1 = window_start;
-    accumulator1 = 0;
-    return !(continuous && !s1);
+    if (index1 > window_end) {
+      index1 = window_start;
+      accumulator1 = 0;
+      return !(continuous && !s1);
+    }
+  } else {
+    index1 = window_end - (accumulator1 >> 6);
+
+    if (index1 < window_start) {
+      index1 = window_end;
+      accumulator1 = 0;
+      return !(continuous && !s1);
+    }
   }
 
   return false;
@@ -201,14 +212,22 @@ bool update2() {
 
   accumulator2 += minor_second;
 
-  index2 = window_start + (accumulator2 >> (6));
+  if (!reverse) {
+    index2 = window_start + (accumulator2 >> 6);
 
-  if (index2 > window_end || (continuous && s2)) {
-    index2 = window_start;
-    accumulator2 = 0;
-    s2_latch = 0;
+    if (index2 > window_end) {
+      index2 = window_start;
+      accumulator2 = 0;
+      return !(continuous && !s2);
+    }
+  } else {
+    index2 = window_end - (accumulator2 >> 6);
 
-    return !(continuous && !s2);
+    if (index2 < window_start) {
+      index2 = window_end;
+      accumulator2 = 0;
+      return !(continuous && !s2);
+    }
   }
 
   return false;
@@ -219,13 +238,22 @@ bool update3() {
 
   accumulator3 += major_second;
 
-  index3 = window_start + (accumulator3 >> (6));
+  if (!reverse) {
+    index3 = window_start + (accumulator3 >> 6);
 
-  if (index3 > window_end || (continuous && s3)) {
-    index3 = window_start;
-    accumulator3 = 0;
-    s3_latch = 0;
-    return !(continuous && !s3);
+    if (index3 > window_end) {
+      index3 = window_start;
+      accumulator3 = 0;
+      return !(continuous && !s3);
+    }
+  } else {
+    index3 = window_end - (accumulator3 >> 6);
+
+    if (index3 < window_start) {
+      index3 = window_end;
+      accumulator3 = 0;
+      return !(continuous && !s3);
+    }
   }
 
   return false;
@@ -236,13 +264,22 @@ bool update4() {
 
   accumulator4 += minor_third;
 
-  index4 = window_start + (accumulator4 >> (6));
+  if (!reverse) {
+    index4 = window_start + (accumulator4 >> 6);
 
-  if (index4 > window_end || (continuous && s4)) {
-    index4 = window_start;
-    accumulator4 = 0;
-    s4_latch = 0;
-    return !(continuous && !s4);
+    if (index4 > window_end) {
+      index4 = window_start;
+      accumulator4 = 0;
+      return !(continuous && !s4);
+    }
+  } else {
+    index4 = window_end - (accumulator4 >> 6);
+
+    if (index4 < window_start) {
+      index4 = window_end;
+      accumulator4 = 0;
+      return !(continuous && !s4);
+    }
   }
 
   return false;
@@ -253,13 +290,22 @@ bool update5() {
 
   accumulator5 += major_third;
 
-  index5 = window_start + (accumulator5 >> (6));
+  if (!reverse) {
+    index5 = window_start + (accumulator5 >> 6);
 
-  if (index5 > window_end || (continuous && s5)) {
-    index5 = window_start;
-    accumulator5 = 0;
-    s5_latch = 0;
-    return !(continuous && !s5);
+    if (index5 > window_end) {
+      index5 = window_start;
+      accumulator5 = 0;
+      return !(continuous && !s5);
+    }
+  } else {
+    index5 = window_end - (accumulator5 >> 6);
+
+    if (index5 < window_start) {
+      index5 = window_end;
+      accumulator5 = 0;
+      return !(continuous && !s5);
+    }
   }
 
   return false;
@@ -270,13 +316,22 @@ bool update6() {
 
   accumulator6 += perfect_fourth;
 
-  index6 = window_start + (accumulator6 >> (6));
+  if (!reverse) {
+    index6 = window_start + (accumulator6 >> 6);
 
-  if (index6 > window_end || (continuous && s6)) {
-    index6 = window_start;
-    accumulator6 = 0;
-    s6_latch = 0;
-    return !(continuous && !s6);
+    if (index6 > window_end) {
+      index6 = window_start;
+      accumulator6 = 0;
+      return !(continuous && !s6);
+    }
+  } else {
+    index6 = window_end - (accumulator6 >> 6);
+
+    if (index6 < window_start) {
+      index6 = window_end;
+      accumulator6 = 0;
+      return !(continuous && !s6);
+    }
   }
 
   return false;
@@ -287,13 +342,22 @@ bool update7() {
 
   accumulator7 += tritone;
 
-  index7 = window_start + (accumulator7 >> (6));
+  if (!reverse) {
+    index7 = window_start + (accumulator7 >> 6);
 
-  if (index7 > window_end || (continuous && s7)) {
-    index7 = window_start;
-    accumulator7 = 0;
-    s7_latch = 0;
-    return !(continuous && !s7);
+    if (index7 > window_end) {
+      index7 = window_start;
+      accumulator7 = 0;
+      return !(continuous && !s7);
+    }
+  } else {
+    index7 = window_end - (accumulator7 >> 6);
+
+    if (index7 < window_start) {
+      index7 = window_end;
+      accumulator7 = 0;
+      return !(continuous && !s7);
+    }
   }
 
   return false;
@@ -304,13 +368,22 @@ bool update8() {
 
   accumulator8 += perfect_fifth;
 
-  index8 = window_start + (accumulator8 >> (6));
+  if (!reverse) {
+    index8 = window_start + (accumulator8 >> 6);
 
-  if (index8 > window_end || (continuous && s8)) {
-    index8 = window_start;
-    accumulator8 = 0;
-    s8_latch = 0;
-    return !(continuous && !s8);
+    if (index8 > window_end) {
+      index8 = window_start;
+      accumulator8 = 0;
+      return !(continuous && !s8);
+    }
+  } else {
+    index8 = window_end - (accumulator8 >> 6);
+
+    if (index8 < window_start) {
+      index8 = window_end;
+      accumulator8 = 0;
+      return !(continuous && !s8);
+    }
   }
 
   return false;
@@ -321,13 +394,22 @@ bool update9() {
 
   accumulator9 += minor_sixth;
 
-  index9 = window_start + (accumulator9 >> (6));
+  if (!reverse) {
+    index9 = window_start + (accumulator9 >> 6);
 
-  if (index9 > window_end || (continuous && s9)) {
-    index9 = window_start;
-    accumulator9 = 0;
-    s9_latch = 0;
-    return !(continuous && !s9);
+    if (index9 > window_end) {
+      index9 = window_start;
+      accumulator9 = 0;
+      return !(continuous && !s9);
+    }
+  } else {
+    index9 = window_end - (accumulator9 >> 6);
+
+    if (index9 < window_start) {
+      index9 = window_end;
+      accumulator9 = 0;
+      return !(continuous && !s9);
+    }
   }
 
   return false;
@@ -338,13 +420,22 @@ bool update10() {
 
   accumulator10 += major_sixth;
 
-  index10 = window_start + (accumulator10 >> (6));
+  if (!reverse) {
+    index10 = window_start + (accumulator10 >> 6);
 
-  if (index10 > window_end || (continuous && s10)) {
-    index10 = window_start;
-    accumulator10 = 0;
-    s10_latch = 0;
-    return !(continuous && !s10);
+    if (index10 > window_end) {
+      index10 = window_start;
+      accumulator10 = 0;
+      return !(continuous && !s10);
+    }
+  } else {
+    index10 = window_end - (accumulator10 >> 6);
+
+    if (index10 < window_start) {
+      index10 = window_end;
+      accumulator10 = 0;
+      return !(continuous && !s10);
+    }
   }
 
   return false;
@@ -353,36 +444,54 @@ bool update10() {
 bool update11() {
   sample_out_temp += read_ram_byte(index11) - 127;
 
-  accumulator11 += major_seventh;
+  accumulator11 += minor_seventh;
 
-  index11 = window_start + (accumulator11 >> (6));
+  if (!reverse) {
+    index11 = window_start + (accumulator11 >> 6);
 
-  if (index11 > window_end || (continuous && s11)) {
-    index11 = window_start;
-    accumulator11 = 0;
-    s11_latch = 0;
-    return !(continuous && !s11);
+    if (index11 > window_end) {
+      index11 = window_start;
+      accumulator11 = 0;
+      return !(continuous && !s11);
+    }
+  } else {
+    index11 = window_end - (accumulator11 >> 6);
+
+    if (index11 < window_start) {
+      index11 = window_end;
+      accumulator11 = 0;
+      return !(continuous && !s11);
+    }
   }
 
   return false;
 }
 
-// bool update12() {
-//   sample_out_temp += read_ram_byte(index12) - 127;
+bool update12() {
+  sample_out_temp += read_ram_byte(index12) - 127;
 
-//   accumulator12 += major_seventh;
+  accumulator12 += major_seventh;
 
-//   index12 = window_start + (accumulator12 >> (6));
+  if (!reverse) {
+    index12 = window_start + (accumulator12 >> 6);
 
-//   if (index12 > window_end || (continuous && s12)) {
-//     index12 = window_start;
-//     accumulator12 = 0;
-//     s12_latch = 0;
-//     return !(continuous && !s12);
-//   }
+    if (index12 > window_end) {
+      index12 = window_start;
+      accumulator12 = 0;
+      return !(continuous && !s12);
+    }
+  } else {
+    index12 = window_end - (accumulator12 >> 6);
 
-//   return false;
-// }
+    if (index12 < window_start) {
+      index12 = window_end;
+      accumulator12 = 0;
+      return !(continuous && !s12);
+    }
+  }
+
+  return false;
+}
 
 void setup(void) {
   cli();  // disable Arduino interrupts to configure things without being interrupted
@@ -400,7 +509,7 @@ void setup(void) {
   pinMode(A1, INPUT_PULLUP);
   pinMode(A2, INPUT_PULLUP);
   pinMode(A3, INPUT_PULLUP);
-  // pinMode(A4, INPUT_PULLUP);
+  pinMode(A4, INPUT_PULLUP);
 
   pinMode(A5, OUTPUT);
 
@@ -546,7 +655,7 @@ void disable_record() {
 
 void assign_note(bool (*f)()) {
   if (note1 == f || note2 == f || note3 == f) return;
-  
+
   if (note1 == NULL) {
     note1 = f;
   } else if (note2 == NULL) {
@@ -566,9 +675,9 @@ void loop(void) {
   byte d7 = digitalRead(0);
   byte d8 = digitalRead(1);
   byte d9 = digitalRead(A1);
-  byte d10 = digitalRead(A2);
-  byte d11 = digitalRead(A3);
-  // byte d12 = digitalRead(A4);
+  byte d10 = digitalRead(A4);
+  byte d11 = digitalRead(A2);
+  byte d12 = digitalRead(A3);
 
   byte df = digitalRead(8);
 
@@ -583,7 +692,7 @@ void loop(void) {
       if (!sf) {
         enable_record();
       } else {
-        index1 = window_start;
+        index1 = reverse ? window_end : window_start;
         accumulator1 = 0;
         assign_note(update1);
       }
@@ -602,7 +711,7 @@ void loop(void) {
         delay_active = !delay_active;
         delay_buffer_index = 0;
       } else {
-        index2 = window_start;
+        index2 = reverse ? window_end : window_start;
         accumulator2 = 0;
         assign_note(update2);
       }
@@ -618,7 +727,7 @@ void loop(void) {
       if (!sf) {
         continuous = !continuous;
       } else {
-        index3 = window_start;
+        index3 = reverse ? window_end : window_start;
         accumulator3 = 0;
         assign_note(update3);
       }
@@ -635,7 +744,7 @@ void loop(void) {
         reverse = !reverse;
         boomerang = 0;
       } else {
-        index4 = window_start;
+        index4 = reverse ? window_end : window_start;
         accumulator4 = 0;
         assign_note(update4);
       }
@@ -652,7 +761,7 @@ void loop(void) {
         boomerang = !boomerang;
         reverse = 0;
       } else {
-        index5 = window_start;
+        index5 = reverse ? window_end : window_start;
         accumulator5 = 0;
         assign_note(update5);
       }
@@ -668,7 +777,7 @@ void loop(void) {
       if (!sf) {
         am = !am;
       } else {
-        index6 = window_start;
+        index6 = reverse ? window_end : window_start;
         accumulator6 = 0;
         assign_note(update6);
       }
@@ -681,7 +790,7 @@ void loop(void) {
     s7 = d7;
 
     if (!s7) {
-      index7 = window_start;
+      index7 = reverse ? window_end : window_start;
       accumulator7 = 0;
       assign_note(update7);
     }
@@ -693,7 +802,7 @@ void loop(void) {
     s8 = d8;
 
     if (!s8) {
-      index8 = window_start;
+      index8 = reverse ? window_end : window_start;
       accumulator8 = 0;
       assign_note(update8);
     }
@@ -705,7 +814,7 @@ void loop(void) {
     s9 = d9;
 
     if (!s9) {
-      index9 = window_start;
+      index9 = reverse ? window_end : window_start;
       accumulator9 = 0;
       assign_note(update9);
     }
@@ -717,7 +826,7 @@ void loop(void) {
     s10 = d10;
 
     if (!s10) {
-      index10 = window_start;
+      index10 = reverse ? window_end : window_start;
       accumulator10 = 0;
       assign_note(update10);
     }
@@ -729,23 +838,23 @@ void loop(void) {
     s11 = d11;
 
     if (!s11) {
-      index11 = window_start;
+      index11 = reverse ? window_end : window_start;
       accumulator11 = 0;
       assign_note(update11);
     }
   }
-  
-  // if (d12 == ls12) {
-  //   ld12 = time;
-  // } else if (time - ld12 > debounceDelay) {
-  //   s12 = d12;
 
-  //   if (!s12) {
-  //     index12 = window_start;
-  //     accumulator12 = 0;
-  //     assign_note(update12);
-  //   }
-  // }
+  if (d12 == ls12) {
+    ld12 = time;
+  } else if (time - ld12 > debounceDelay) {
+    s12 = d12;
+
+    if (!s12) {
+      index12 = reverse ? window_end : window_start;
+      accumulator12 = 0;
+      assign_note(update12);
+    }
+  }
 
   if (df == lsf) {
     ldf = time;
@@ -764,7 +873,7 @@ void loop(void) {
   ls9 = s9;
   ls10 = s10;
   ls11 = s11;
-  // ls12 = s12;
+  ls12 = s12;
 
   lsf = sf;
 
