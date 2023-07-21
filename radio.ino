@@ -186,12 +186,18 @@ bool update1() {
 
   accumulator1 += pitch;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd1)) {
     index1 = window_start + (accumulator1 >> 6);
 
     if (index1 > window_end) {
       index1 = window_start;
       accumulator1 = 0;
+
+      if (boomerang) {
+        bd1 = 1;
+        return false;
+      }
+
       return !(continuous && !s1);
     }
   } else {
@@ -200,6 +206,9 @@ bool update1() {
     if (index1 < window_start) {
       index1 = window_end;
       accumulator1 = 0;
+
+      if (boomerang) bd1 = 0;
+
       return !(continuous && !s1);
     }
   }
@@ -212,12 +221,18 @@ bool update2() {
 
   accumulator2 += minor_second;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd2)) {
     index2 = window_start + (accumulator2 >> 6);
 
     if (index2 > window_end) {
       index2 = window_start;
       accumulator2 = 0;
+
+      if (boomerang) {
+        bd2 = 1;
+        return false;
+      }
+
       return !(continuous && !s2);
     }
   } else {
@@ -226,6 +241,9 @@ bool update2() {
     if (index2 < window_start) {
       index2 = window_end;
       accumulator2 = 0;
+
+      if (boomerang) bd2 = 0;
+
       return !(continuous && !s2);
     }
   }
@@ -238,12 +256,18 @@ bool update3() {
 
   accumulator3 += major_second;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd3)) {
     index3 = window_start + (accumulator3 >> 6);
 
     if (index3 > window_end) {
       index3 = window_start;
       accumulator3 = 0;
+
+      if (boomerang) {
+        bd3 = 1;
+        return false;
+      }
+
       return !(continuous && !s3);
     }
   } else {
@@ -252,6 +276,9 @@ bool update3() {
     if (index3 < window_start) {
       index3 = window_end;
       accumulator3 = 0;
+
+      if (boomerang) bd3 = 0;
+
       return !(continuous && !s3);
     }
   }
@@ -264,12 +291,18 @@ bool update4() {
 
   accumulator4 += minor_third;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd4)) {
     index4 = window_start + (accumulator4 >> 6);
 
     if (index4 > window_end) {
       index4 = window_start;
       accumulator4 = 0;
+
+      if (boomerang) {
+        bd4 = 1;
+        return false;
+      }
+
       return !(continuous && !s4);
     }
   } else {
@@ -278,6 +311,9 @@ bool update4() {
     if (index4 < window_start) {
       index4 = window_end;
       accumulator4 = 0;
+
+      if (boomerang) bd4 = 0;
+
       return !(continuous && !s4);
     }
   }
@@ -290,12 +326,18 @@ bool update5() {
 
   accumulator5 += major_third;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd5)) {
     index5 = window_start + (accumulator5 >> 6);
 
     if (index5 > window_end) {
       index5 = window_start;
       accumulator5 = 0;
+
+      if (boomerang) {
+        bd5 = 1;
+        return false;
+      }
+
       return !(continuous && !s5);
     }
   } else {
@@ -304,6 +346,9 @@ bool update5() {
     if (index5 < window_start) {
       index5 = window_end;
       accumulator5 = 0;
+
+      if (boomerang) bd5 = 0;
+
       return !(continuous && !s5);
     }
   }
@@ -316,12 +361,18 @@ bool update6() {
 
   accumulator6 += perfect_fourth;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd6)) {
     index6 = window_start + (accumulator6 >> 6);
 
     if (index6 > window_end) {
       index6 = window_start;
       accumulator6 = 0;
+
+      if (boomerang) {
+        bd6 = 1;
+        return false;
+      }
+
       return !(continuous && !s6);
     }
   } else {
@@ -330,6 +381,9 @@ bool update6() {
     if (index6 < window_start) {
       index6 = window_end;
       accumulator6 = 0;
+
+      if (boomerang) bd6 = 0;
+
       return !(continuous && !s6);
     }
   }
@@ -342,12 +396,18 @@ bool update7() {
 
   accumulator7 += tritone;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd7)) {
     index7 = window_start + (accumulator7 >> 6);
 
     if (index7 > window_end) {
       index7 = window_start;
       accumulator7 = 0;
+
+      if (boomerang) {
+        bd7 = 1;
+        return false;
+      }
+
       return !(continuous && !s7);
     }
   } else {
@@ -356,6 +416,9 @@ bool update7() {
     if (index7 < window_start) {
       index7 = window_end;
       accumulator7 = 0;
+
+      if (boomerang) bd7 = 0;
+
       return !(continuous && !s7);
     }
   }
@@ -368,12 +431,18 @@ bool update8() {
 
   accumulator8 += perfect_fifth;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd8)) {
     index8 = window_start + (accumulator8 >> 6);
 
     if (index8 > window_end) {
       index8 = window_start;
       accumulator8 = 0;
+
+      if (boomerang) {
+        bd8 = 1;
+        return false;
+      }
+
       return !(continuous && !s8);
     }
   } else {
@@ -382,6 +451,9 @@ bool update8() {
     if (index8 < window_start) {
       index8 = window_end;
       accumulator8 = 0;
+
+      if (boomerang) bd8 = 0;
+
       return !(continuous && !s8);
     }
   }
@@ -394,12 +466,18 @@ bool update9() {
 
   accumulator9 += minor_sixth;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd9)) {
     index9 = window_start + (accumulator9 >> 6);
 
     if (index9 > window_end) {
       index9 = window_start;
       accumulator9 = 0;
+
+      if (boomerang) {
+        bd9 = 1;
+        return false;
+      }
+
       return !(continuous && !s9);
     }
   } else {
@@ -408,6 +486,9 @@ bool update9() {
     if (index9 < window_start) {
       index9 = window_end;
       accumulator9 = 0;
+
+      if (boomerang) bd9 = 0;
+
       return !(continuous && !s9);
     }
   }
@@ -420,12 +501,18 @@ bool update10() {
 
   accumulator10 += major_sixth;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd10)) {
     index10 = window_start + (accumulator10 >> 6);
 
     if (index10 > window_end) {
       index10 = window_start;
       accumulator10 = 0;
+
+      if (boomerang) {
+        bd10 = 1;
+        return false;
+      }
+
       return !(continuous && !s10);
     }
   } else {
@@ -434,6 +521,9 @@ bool update10() {
     if (index10 < window_start) {
       index10 = window_end;
       accumulator10 = 0;
+
+      if (boomerang) bd10 = 0;
+
       return !(continuous && !s10);
     }
   }
@@ -446,12 +536,18 @@ bool update11() {
 
   accumulator11 += minor_seventh;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd11)) {
     index11 = window_start + (accumulator11 >> 6);
 
     if (index11 > window_end) {
       index11 = window_start;
       accumulator11 = 0;
+
+      if (boomerang) {
+        bd11 = 1;
+        return false;
+      }
+
       return !(continuous && !s11);
     }
   } else {
@@ -460,6 +556,9 @@ bool update11() {
     if (index11 < window_start) {
       index11 = window_end;
       accumulator11 = 0;
+
+      if (boomerang) bd11 = 0;
+
       return !(continuous && !s11);
     }
   }
@@ -472,12 +571,18 @@ bool update12() {
 
   accumulator12 += major_seventh;
 
-  if (!reverse) {
+  if (!reverse && (!boomerang || !bd12)) {
     index12 = window_start + (accumulator12 >> 6);
 
     if (index12 > window_end) {
       index12 = window_start;
       accumulator12 = 0;
+
+      if (boomerang) {
+        bd12 = 1;
+        return false;
+      }
+
       return !(continuous && !s12);
     }
   } else {
@@ -486,6 +591,9 @@ bool update12() {
     if (index12 < window_start) {
       index12 = window_end;
       accumulator12 = 0;
+
+      if (boomerang) bd12 = 0;
+
       return !(continuous && !s12);
     }
   }
@@ -879,7 +987,7 @@ void loop(void) {
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
   if (!recording) {
-    window_start = map(analogRead(A6), 0, 1024, 0, sample_length);
-    window_end = map(analogRead(A7), 0, 1024, 0, sample_length);
+    window_start = map(analogRead(A6), 0, 1024, 100, sample_length);
+    window_end = map(analogRead(A7), 0, 1024, window_start, sample_length);
   }
 }
