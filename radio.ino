@@ -10,67 +10,18 @@ const byte sine_table[] PROGMEM = { 128, 131, 134, 137, 140, 143, 146, 149, 152,
                                     2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62,
                                     65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124 };
 
-// the following clumps of variables control state for the available buttons.
+int8_t notes[3]           = { -1, -1, -1 };
+byte states[12]           = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+uint16_t indexes[12]      = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+uint32_t accumulators[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+byte bds[12]              = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-// s1 = state of button
-// s1_trigger = was the button pressed
-// s1_latch = the button was pressed, now we play the associated sample to completion (even if button was released)
-// bd1 = boomerang direction for this button (forward == 0, backward = 1)
-// ls1 = LAST state of button
-// ld1 = last debounce time
+uint16_t sine_index;
+uint32_t sine_accumulator;
 
-// all of the above applies to s2, s3, s4, etc
+unsigned long ld0, ld1, ld2, ld3, ld4, ld5, ld6, ld7, ld8, ld9, ld10, ld11 = 0;
 
-byte s1, s1_latch, bd1;
-byte ls1 = HIGH;
-unsigned long ld1 = 0;
-
-byte s2, s2_latch, bd2;
-byte ls2 = HIGH;
-unsigned long ld2 = 0;
-
-byte s3, s3_latch, bd3;
-byte ls3 = HIGH;
-unsigned long ld3 = 0;
-
-byte s4, s4_latch, bd4;
-byte ls4 = HIGH;
-unsigned long ld4 = 0;
-
-byte s5, s5_latch, bd5;
-byte ls5 = HIGH;
-unsigned long ld5 = 0;
-
-byte s6, s6_latch, bd6;
-byte ls6 = HIGH;
-unsigned long ld6 = 0;
-
-byte s7, s7_latch, bd7;
-byte ls7 = HIGH;
-unsigned long ld7 = 0;
-
-byte s8, s8_latch, bd8;
-byte ls8 = HIGH;
-unsigned long ld8 = 0;
-
-byte s9, s9_latch, bd9;
-byte ls9 = HIGH;
-unsigned long ld9 = 0;
-
-byte s10, s10_latch, bd10;
-byte ls10 = HIGH;
-unsigned long ld10 = 0;
-
-byte s11, s11_latch, bd11;
-byte ls11 = HIGH;
-unsigned long ld11 = 0;
-
-byte s12, s12_latch, bd12;
-byte ls12 = HIGH;
-unsigned long ld12 = 0;
-
-byte sf;                // state of function button
-byte lsf = HIGH;        // last state of function button
+byte sf = 1;            // state of function button
 unsigned long ldf = 0;  // last debounce time of function button
 
 // various modes of playback
@@ -87,24 +38,38 @@ int sample_out_temp;  // used for gathering currently playing samples, then chop
 byte sample_out;      // actual byte delivered to the DAC
 
 byte pitch = 60;
-byte minor_second = round(pitch * 1.059463);
-byte major_second = round(pitch * 1.122462);
-byte minor_third = round(pitch * 1.189207);
-byte major_third = round(pitch * 1.259921);
-byte perfect_fourth = round(pitch * 1.334840);
-byte tritone = round(pitch * 1.414214);
-byte perfect_fifth = round(pitch * 1.498307);
-byte minor_sixth = round(pitch * 1.587401);
-byte major_sixth = round(pitch * 1.681793);
-byte minor_seventh = round(pitch * 1.781797);
-byte major_seventh = round(pitch * 1.887749);
-byte octave = round(pitch * 2.0);
+// byte minor_second = round(pitch * 1.059463);
+// byte major_second = round(pitch * 1.122462);
+// byte minor_third = round(pitch * 1.189207);
+// byte major_third = round(pitch * 1.259921);
+// byte perfect_fourth = round(pitch * 1.334840);
+// byte tritone = round(pitch * 1.414214);
+// byte perfect_fifth = round(pitch * 1.498307);
+// byte minor_sixth = round(pitch * 1.587401);
+// byte major_sixth = round(pitch * 1.681793);
+// byte minor_seventh = round(pitch * 1.781797);
+// byte major_seventh = round(pitch * 1.887749);
+// byte octave = round(pitch * 2.0);
+
+byte pitches[13] = {
+  pitch,
+  round(pitch * 1.059463),
+  round(pitch * 1.122462),
+  round(pitch * 1.189207),
+  round(pitch * 1.259921),
+  round(pitch * 1.334840),
+  round(pitch * 1.414214),
+  round(pitch * 1.498307),
+  round(pitch * 1.587401),
+  round(pitch * 1.681793),
+  round(pitch * 1.781797),
+  round(pitch * 1.887749),
+  round(pitch * 2.0)
+};
 
 const unsigned long dds_tune = 4294967296 / 8000;  // dds thing for sine playback for A.M. mode, don't worry about it
 
 uint16_t w1, e1, w2, e2, w3, e3, w4, e4, window_start, window_end;
-uint16_t index1, index2, index3, index4, index5, index6, index7, index8, index9, index10, index11, index12, index13, sine_index;
-uint32_t accumulator1, accumulator2, accumulator3, accumulator4, accumulator5, accumulator6, accumulator7, accumulator8, accumulator9, accumulator10, accumulator11, accumulator12, accumulator13, sine_accumulator;
 
 // Audio "delay"...play back stuff that happened already, in a repeating way, to make a pseudo echo effect
 byte delay_buffer[1000] = { 0 };
@@ -115,10 +80,6 @@ byte recording;          // a boolean byte where 0 = false and 1 = true...are we
 
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
 byte mp = 3;                         // max number of samples that can be playing at one time (based on speed of byte read from storage...too many and it'll choke!)
-
-bool (*note1)() = NULL;
-bool (*note2)() = NULL;
-bool (*note3)() = NULL;
 
 void set_ram_byte_mode() {
   digitalWrite(9, LOW);
@@ -181,420 +142,35 @@ void end_writing_ram_sequential() {
   recording = 0;  // boolean "0"
 }
 
-bool update1() {
-  sample_out_temp += read_ram_byte(index1) - 127;
+bool update_note(int8_t index) {
+  sample_out_temp += read_ram_byte(indexes[index]) - 127;
 
-  accumulator1 += pitch;
+  accumulators[index] += pitches[index];
 
-  if (!reverse && (!boomerang || !bd1)) {
-    index1 = window_start + (accumulator1 >> 6);
+  if (!reverse && (!boomerang || !bds[index])) {
+    indexes[index] = window_start + (accumulators[index] >> 6);
 
-    if (index1 > window_end) {
-      index1 = window_start;
-      accumulator1 = 0;
+    if (indexes[index] > window_end) {
+      indexes[index] = window_start;
+      accumulators[index] = 0;
 
       if (boomerang) {
-        bd1 = 1;
+        bds[index] = 1;
         return false;
       }
 
-      return !(continuous && !s1);
+      return !(continuous && !states[index]);
     }
   } else {
-    index1 = window_end - (accumulator1 >> 6);
+    indexes[index] = window_end - (accumulators[index] >> 6);
 
-    if (index1 < window_start) {
-      index1 = window_end;
-      accumulator1 = 0;
+    if (indexes[index] < window_start) {
+      indexes[index] = window_end;
+      accumulators[index] = 0;
 
-      if (boomerang) bd1 = 0;
+      if (boomerang) bds[index] = 0;
 
-      return !(continuous && !s1);
-    }
-  }
-
-  return false;
-}
-
-bool update2() {
-  sample_out_temp += read_ram_byte(index2) - 127;
-
-  accumulator2 += minor_second;
-
-  if (!reverse && (!boomerang || !bd2)) {
-    index2 = window_start + (accumulator2 >> 6);
-
-    if (index2 > window_end) {
-      index2 = window_start;
-      accumulator2 = 0;
-
-      if (boomerang) {
-        bd2 = 1;
-        return false;
-      }
-
-      return !(continuous && !s2);
-    }
-  } else {
-    index2 = window_end - (accumulator2 >> 6);
-
-    if (index2 < window_start) {
-      index2 = window_end;
-      accumulator2 = 0;
-
-      if (boomerang) bd2 = 0;
-
-      return !(continuous && !s2);
-    }
-  }
-
-  return false;
-}
-
-bool update3() {
-  sample_out_temp += read_ram_byte(index3) - 127;
-
-  accumulator3 += major_second;
-
-  if (!reverse && (!boomerang || !bd3)) {
-    index3 = window_start + (accumulator3 >> 6);
-
-    if (index3 > window_end) {
-      index3 = window_start;
-      accumulator3 = 0;
-
-      if (boomerang) {
-        bd3 = 1;
-        return false;
-      }
-
-      return !(continuous && !s3);
-    }
-  } else {
-    index3 = window_end - (accumulator3 >> 6);
-
-    if (index3 < window_start) {
-      index3 = window_end;
-      accumulator3 = 0;
-
-      if (boomerang) bd3 = 0;
-
-      return !(continuous && !s3);
-    }
-  }
-
-  return false;
-}
-
-bool update4() {
-  sample_out_temp += read_ram_byte(index4) - 127;
-
-  accumulator4 += minor_third;
-
-  if (!reverse && (!boomerang || !bd4)) {
-    index4 = window_start + (accumulator4 >> 6);
-
-    if (index4 > window_end) {
-      index4 = window_start;
-      accumulator4 = 0;
-
-      if (boomerang) {
-        bd4 = 1;
-        return false;
-      }
-
-      return !(continuous && !s4);
-    }
-  } else {
-    index4 = window_end - (accumulator4 >> 6);
-
-    if (index4 < window_start) {
-      index4 = window_end;
-      accumulator4 = 0;
-
-      if (boomerang) bd4 = 0;
-
-      return !(continuous && !s4);
-    }
-  }
-
-  return false;
-}
-
-bool update5() {
-  sample_out_temp += read_ram_byte(index5) - 127;
-
-  accumulator5 += major_third;
-
-  if (!reverse && (!boomerang || !bd5)) {
-    index5 = window_start + (accumulator5 >> 6);
-
-    if (index5 > window_end) {
-      index5 = window_start;
-      accumulator5 = 0;
-
-      if (boomerang) {
-        bd5 = 1;
-        return false;
-      }
-
-      return !(continuous && !s5);
-    }
-  } else {
-    index5 = window_end - (accumulator5 >> 6);
-
-    if (index5 < window_start) {
-      index5 = window_end;
-      accumulator5 = 0;
-
-      if (boomerang) bd5 = 0;
-
-      return !(continuous && !s5);
-    }
-  }
-
-  return false;
-}
-
-bool update6() {
-  sample_out_temp += read_ram_byte(index6) - 127;
-
-  accumulator6 += perfect_fourth;
-
-  if (!reverse && (!boomerang || !bd6)) {
-    index6 = window_start + (accumulator6 >> 6);
-
-    if (index6 > window_end) {
-      index6 = window_start;
-      accumulator6 = 0;
-
-      if (boomerang) {
-        bd6 = 1;
-        return false;
-      }
-
-      return !(continuous && !s6);
-    }
-  } else {
-    index6 = window_end - (accumulator6 >> 6);
-
-    if (index6 < window_start) {
-      index6 = window_end;
-      accumulator6 = 0;
-
-      if (boomerang) bd6 = 0;
-
-      return !(continuous && !s6);
-    }
-  }
-
-  return false;
-}
-
-bool update7() {
-  sample_out_temp += read_ram_byte(index7) - 127;
-
-  accumulator7 += tritone;
-
-  if (!reverse && (!boomerang || !bd7)) {
-    index7 = window_start + (accumulator7 >> 6);
-
-    if (index7 > window_end) {
-      index7 = window_start;
-      accumulator7 = 0;
-
-      if (boomerang) {
-        bd7 = 1;
-        return false;
-      }
-
-      return !(continuous && !s7);
-    }
-  } else {
-    index7 = window_end - (accumulator7 >> 6);
-
-    if (index7 < window_start) {
-      index7 = window_end;
-      accumulator7 = 0;
-
-      if (boomerang) bd7 = 0;
-
-      return !(continuous && !s7);
-    }
-  }
-
-  return false;
-}
-
-bool update8() {
-  sample_out_temp += read_ram_byte(index8) - 127;
-
-  accumulator8 += perfect_fifth;
-
-  if (!reverse && (!boomerang || !bd8)) {
-    index8 = window_start + (accumulator8 >> 6);
-
-    if (index8 > window_end) {
-      index8 = window_start;
-      accumulator8 = 0;
-
-      if (boomerang) {
-        bd8 = 1;
-        return false;
-      }
-
-      return !(continuous && !s8);
-    }
-  } else {
-    index8 = window_end - (accumulator8 >> 6);
-
-    if (index8 < window_start) {
-      index8 = window_end;
-      accumulator8 = 0;
-
-      if (boomerang) bd8 = 0;
-
-      return !(continuous && !s8);
-    }
-  }
-
-  return false;
-}
-
-bool update9() {
-  sample_out_temp += read_ram_byte(index9) - 127;
-
-  accumulator9 += minor_sixth;
-
-  if (!reverse && (!boomerang || !bd9)) {
-    index9 = window_start + (accumulator9 >> 6);
-
-    if (index9 > window_end) {
-      index9 = window_start;
-      accumulator9 = 0;
-
-      if (boomerang) {
-        bd9 = 1;
-        return false;
-      }
-
-      return !(continuous && !s9);
-    }
-  } else {
-    index9 = window_end - (accumulator9 >> 6);
-
-    if (index9 < window_start) {
-      index9 = window_end;
-      accumulator9 = 0;
-
-      if (boomerang) bd9 = 0;
-
-      return !(continuous && !s9);
-    }
-  }
-
-  return false;
-}
-
-bool update10() {
-  sample_out_temp += read_ram_byte(index10) - 127;
-
-  accumulator10 += major_sixth;
-
-  if (!reverse && (!boomerang || !bd10)) {
-    index10 = window_start + (accumulator10 >> 6);
-
-    if (index10 > window_end) {
-      index10 = window_start;
-      accumulator10 = 0;
-
-      if (boomerang) {
-        bd10 = 1;
-        return false;
-      }
-
-      return !(continuous && !s10);
-    }
-  } else {
-    index10 = window_end - (accumulator10 >> 6);
-
-    if (index10 < window_start) {
-      index10 = window_end;
-      accumulator10 = 0;
-
-      if (boomerang) bd10 = 0;
-
-      return !(continuous && !s10);
-    }
-  }
-
-  return false;
-}
-
-bool update11() {
-  sample_out_temp += read_ram_byte(index11) - 127;
-
-  accumulator11 += minor_seventh;
-
-  if (!reverse && (!boomerang || !bd11)) {
-    index11 = window_start + (accumulator11 >> 6);
-
-    if (index11 > window_end) {
-      index11 = window_start;
-      accumulator11 = 0;
-
-      if (boomerang) {
-        bd11 = 1;
-        return false;
-      }
-
-      return !(continuous && !s11);
-    }
-  } else {
-    index11 = window_end - (accumulator11 >> 6);
-
-    if (index11 < window_start) {
-      index11 = window_end;
-      accumulator11 = 0;
-
-      if (boomerang) bd11 = 0;
-
-      return !(continuous && !s11);
-    }
-  }
-
-  return false;
-}
-
-bool update12() {
-  sample_out_temp += read_ram_byte(index12) - 127;
-
-  accumulator12 += major_seventh;
-
-  if (!reverse && (!boomerang || !bd12)) {
-    index12 = window_start + (accumulator12 >> 6);
-
-    if (index12 > window_end) {
-      index12 = window_start;
-      accumulator12 = 0;
-
-      if (boomerang) {
-        bd12 = 1;
-        return false;
-      }
-
-      return !(continuous && !s12);
-    }
-  } else {
-    index12 = window_end - (accumulator12 >> 6);
-
-    if (index12 < window_start) {
-      index12 = window_end;
-      accumulator12 = 0;
-
-      if (boomerang) bd12 = 0;
-
-      return !(continuous && !s12);
+      return !(continuous && !states[index]);
     }
   }
 
@@ -663,24 +239,23 @@ ISR(TIMER2_COMPA_vect) {
 
   // everything below here in the interrupt is playback code
 
-  if (note1 != NULL) {
-    if (note1()) note1 = NULL;
+  if (notes[0] != -1) {
+    if (update_note(notes[0])) notes[0] = -1;
   }
 
-  if (note2 != NULL) {
-    if (note2()) note2 = NULL;
+  if (notes[1] != -1) {
+    if (update_note(notes[1])) notes[1] = -1;
   }
 
-  if (note3 != NULL) {
-    if (note3()) note3 = NULL;
+  if (notes[2] != -1) {
+    if (update_note(notes[2])) notes[2] = -1;
   }
 
   if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
 
-  // if (am) {
-  //   // sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) * (sample1) / 255) << 1;
-  // } else {
-  // }
+  if (am) {
+    sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) * ((sample_out_temp / 3) / 255)) << 1;
+  }
 
   sample_out_temp = (sample_out_temp >> 1) + 127;
 
@@ -705,10 +280,10 @@ ISR(TIMER2_COMPA_vect) {
   SPI.transfer16(0b0111000000000000 | (sample_out << 4));
   digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
 
-  // if (am) {
-  //   sine_accumulator += 440 << 2;
-  //   sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
-  // }
+  if (am) {
+    sine_accumulator += 440 << 2;
+    sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
+  }
 
   delay_buffer_index++;
   if (delay_buffer_index == 1000) delay_buffer_index = 0;
@@ -761,229 +336,216 @@ void disable_record() {
   sei();
 }
 
-void assign_note(bool (*f)()) {
-  if (note1 == f || note2 == f || note3 == f) return;
+void assign_note(int8_t note_index) {
+  if (notes[0] == note_index || notes[1] == note_index || notes[2] == note_index) return;
 
-  if (note1 == NULL) {
-    note1 = f;
-  } else if (note2 == NULL) {
-    note2 = f;
-  } else if (note3 == NULL) {
-    note3 = f;
+  if (notes[0] == -1) {
+    notes[0] = note_index;
+  } else if (notes[1] == -1) {
+    notes[1] = note_index;
+  } else if (notes[2] == -1) {
+    notes[2] = note_index;
   }
 };
 
 void loop(void) {
-  byte d1 = digitalRead(2);
-  byte d2 = digitalRead(3);
-  byte d3 = digitalRead(4);
-  byte d4 = digitalRead(5);
-  byte d5 = digitalRead(6);
-  byte d6 = digitalRead(7);
-  byte d7 = digitalRead(0);
-  byte d8 = digitalRead(1);
-  byte d9 = digitalRead(A1);
-  byte d10 = digitalRead(A4);
-  byte d11 = digitalRead(A2);
-  byte d12 = digitalRead(A3);
+  byte d0 = digitalRead(2);
+  byte d1 = digitalRead(3);
+  byte d2 = digitalRead(4);
+  byte d3 = digitalRead(5);
+  byte d4 = digitalRead(6);
+  byte d5 = digitalRead(7);
+  byte d6 = digitalRead(0);
+  byte d7 = digitalRead(1);
+  byte d8 = digitalRead(A1);
+  byte d9 = digitalRead(A4);
+  byte d10 = digitalRead(A2);
+  byte d11 = digitalRead(A3);
 
   byte df = digitalRead(8);
 
   unsigned long time = millis();
 
-  if (d1 == ls1) {
-    ld1 = time;
-  } else if (time - ld1 > debounceDelay) {
-    s1 = d1;
+  if (d0 == states[0]) {
+    ld0 = time;
+  } else if (time - ld0 > debounceDelay) {
+    states[0] = d0;
 
-    if (!s1) {
+    if (!states[0]) {
       if (!sf) {
         enable_record();
       } else {
-        index1 = reverse ? window_end : window_start;
-        accumulator1 = 0;
-        assign_note(update1);
+        indexes[0] = reverse ? window_end : window_start;
+        accumulators[0] = 0;
+        assign_note(0);
       }
     } else {
       if (!sf) disable_record();
     }
   }
 
-  if (d2 == ls2) {
-    ld2 = time;
-  } else if (time - ld2 > debounceDelay) {
-    s2 = d2;
+  if (d1 == states[1]) {
+    ld1 = time;
+  } else if (time - ld1 > debounceDelay) {
+    states[1] = d1;
 
-    if (!s2) {
+    if (!states[1]) {
       if (!sf) {
         delay_active = !delay_active;
         delay_buffer_index = 0;
       } else {
-        index2 = reverse ? window_end : window_start;
-        accumulator2 = 0;
-        assign_note(update2);
+        indexes[1] = reverse ? window_end : window_start;
+        accumulators[1] = 0;
+        assign_note(1);
       }
     }
   }
 
-  if (d3 == ls3) {
-    ld3 = time;
-  } else if (time - ld3 > debounceDelay) {
-    s3 = d3;
+  if (d2 == states[2]) {
+    ld2 = time;
+  } else if (time - ld2 > debounceDelay) {
+    states[2] = d2;
 
-    if (!s3) {
+    if (!states[2]) {
       if (!sf) {
         continuous = !continuous;
       } else {
-        index3 = reverse ? window_end : window_start;
-        accumulator3 = 0;
-        assign_note(update3);
+        indexes[2] = reverse ? window_end : window_start;
+        accumulators[2] = 0;
+        assign_note(2);
       }
     }
   }
 
-  if (d4 == ls4) {
-    ld4 = time;
-  } else if (time - ld4 > debounceDelay) {
-    s4 = d4;
+  if (d3 == states[3]) {
+    ld3 = time;
+  } else if (time - ld3 > debounceDelay) {
+    states[3] = d3;
 
-    if (!s4) {
+    if (!states[3]) {
       if (!sf) {
         reverse = !reverse;
         boomerang = 0;
       } else {
-        index4 = reverse ? window_end : window_start;
-        accumulator4 = 0;
-        assign_note(update4);
+        indexes[3] = reverse ? window_end : window_start;
+        accumulators[3] = 0;
+        assign_note(3);
       }
     }
   }
 
-  if (d5 == ls5) {
-    ld5 = time;
-  } else if (time - ld5 > debounceDelay) {
-    s5 = d5;
+  if (d4 == states[4]) {
+    ld4 = time;
+  } else if (time - ld4 > debounceDelay) {
+    states[4] = d4;
 
-    if (!s5) {
+    if (!states[4]) {
       if (!sf) {
         boomerang = !boomerang;
         reverse = 0;
       } else {
-        index5 = reverse ? window_end : window_start;
-        accumulator5 = 0;
-        assign_note(update5);
+        indexes[4] = reverse ? window_end : window_start;
+        accumulators[4] = 0;
+        assign_note(4);
       }
     }
   }
 
-  if (d6 == ls6) {
-    ld6 = time;
-  } else if (time - ld6 > debounceDelay) {
-    s6 = d6;
+  if (d5 == states[5]) {
+    ld5 = time;
+  } else if (time - ld5 > debounceDelay) {
+    states[5] = d5;
 
-    if (!s6) {
+    if (!states[5]) {
       if (!sf) {
         am = !am;
+        sine_index = 0;
+        sine_accumulator = 0;
       } else {
-        index6 = reverse ? window_end : window_start;
-        accumulator6 = 0;
-        assign_note(update6);
+        indexes[5] = reverse ? window_end : window_start;
+        accumulators[5] = 0;
+        assign_note(5);
       }
     }
   }
 
-  if (d7 == ls7) {
+  if (d6 == states[6]) {
+    ld6 = time;
+  } else if (time - ld6 > debounceDelay) {
+    states[6] = d6;
+
+    if (!states[6]) {
+      indexes[6] = reverse ? window_end : window_start;
+      accumulators[6] = 0;
+      assign_note(6);
+    }
+  }
+
+  if (d7 == states[7]) {
     ld7 = time;
   } else if (time - ld7 > debounceDelay) {
-    s7 = d7;
+    states[7] = d7;
 
-    if (!s7) {
-      index7 = reverse ? window_end : window_start;
-      accumulator7 = 0;
-      assign_note(update7);
+    if (!states[7]) {
+      indexes[7] = reverse ? window_end : window_start;
+      accumulators[7] = 0;
+      assign_note(7);
     }
   }
 
-  if (d8 == ls8) {
+  if (d8 == states[8]) {
     ld8 = time;
   } else if (time - ld8 > debounceDelay) {
-    s8 = d8;
+    states[8] = d8;
 
-    if (!s8) {
-      index8 = reverse ? window_end : window_start;
-      accumulator8 = 0;
-      assign_note(update8);
+    if (!states[8]) {
+      indexes[8] = reverse ? window_end : window_start;
+      accumulators[8] = 0;
+      assign_note(8);
     }
   }
 
-  if (d9 == ls9) {
+  if (d9 == states[9]) {
     ld9 = time;
   } else if (time - ld9 > debounceDelay) {
-    s9 = d9;
+    states[9] = d9;
 
-    if (!s9) {
-      index9 = reverse ? window_end : window_start;
-      accumulator9 = 0;
-      assign_note(update9);
+    if (!states[9]) {
+      indexes[9] = reverse ? window_end : window_start;
+      accumulators[9] = 0;
+      assign_note(9);
     }
   }
 
-  if (d10 == ls10) {
+  if (d10 == states[10]) {
     ld10 = time;
   } else if (time - ld10 > debounceDelay) {
-    s10 = d10;
+    states[10] = d10;
 
-    if (!s10) {
-      index10 = reverse ? window_end : window_start;
-      accumulator10 = 0;
-      assign_note(update10);
+    if (!states[10]) {
+      indexes[10] = reverse ? window_end : window_start;
+      accumulators[10] = 0;
+      assign_note(10);
     }
   }
 
-  if (d11 == ls11) {
+  if (d11 == states[11]) {
     ld11 = time;
   } else if (time - ld11 > debounceDelay) {
-    s11 = d11;
+    states[11] = d11;
 
-    if (!s11) {
-      index11 = reverse ? window_end : window_start;
-      accumulator11 = 0;
-      assign_note(update11);
+    if (!states[11]) {
+      indexes[11] = reverse ? window_end : window_start;
+      accumulators[11] = 0;
+      assign_note(11);
     }
   }
 
-  if (d12 == ls12) {
-    ld12 = time;
-  } else if (time - ld12 > debounceDelay) {
-    s12 = d12;
-
-    if (!s12) {
-      index12 = reverse ? window_end : window_start;
-      accumulator12 = 0;
-      assign_note(update12);
-    }
-  }
-
-  if (df == lsf) {
+  if (df == sf) {
     ldf = time;
   } else if (time - ldf > debounceDelay) {
     sf = df;
   }
-
-  ls1 = s1;
-  ls2 = s2;
-  ls3 = s3;
-  ls4 = s4;
-  ls5 = s5;
-  ls6 = s6;
-  ls7 = s7;
-  ls8 = s8;
-  ls9 = s9;
-  ls10 = s10;
-  ls11 = s11;
-  ls12 = s12;
-
-  lsf = sf;
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
   if (!recording) {
