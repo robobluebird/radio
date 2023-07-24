@@ -10,11 +10,13 @@ const byte sine_table[] PROGMEM = { 128, 131, 134, 137, 140, 143, 146, 149, 152,
                                     2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62,
                                     65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124 };
 
-int8_t notes[3]           = { -1, -1, -1 };
-byte states[12]           = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-uint16_t indexes[12]      = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+int8_t notes[3] = { -1, -1, -1 };
+byte states[12] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+uint16_t indexes[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t accumulators[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-byte bds[12]              = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+byte bds[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+bool (*update_note)(int8_t, byte) = NULL;
 
 uint16_t sine_index;
 uint32_t sine_accumulator;
@@ -73,13 +75,13 @@ uint16_t w1, e1, w2, e2, w3, e3, w4, e4, window_start, window_end;
 
 // Audio "delay"...play back stuff that happened already, in a repeating way, to make a pseudo echo effect
 byte delay_buffer[1000] = { 0 };
-byte delay_buffer_index, delay_active;
+byte delay_active;
+uint16_t delay_buffer_index;
 
 uint16_t sample_length;  // set every time we record, based on how long we record
 byte recording;          // a boolean byte where 0 = false and 1 = true...are we currently recording?
 
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
-byte mp = 3;                         // max number of samples that can be playing at one time (based on speed of byte read from storage...too many and it'll choke!)
 
 void set_ram_byte_mode() {
   digitalWrite(9, LOW);
@@ -142,43 +144,64 @@ void end_writing_ram_sequential() {
   recording = 0;  // boolean "0"
 }
 
-bool update_note(int8_t index) {
+void update_note_reverse(int8_t index, byte note_index) {
   sample_out_temp += read_ram_byte(indexes[index]) - 127;
 
   accumulators[index] += pitches[index];
 
-  if (!reverse && (!boomerang || !bds[index])) {
-    indexes[index] = window_start + (accumulators[index] >> 6);
+  indexes[index] = window_end - (accumulators[index] >> 6);
 
-    if (indexes[index] > window_end) {
-      indexes[index] = window_start;
-      accumulators[index] = 0;
+  if (indexes[index] < window_start) {
+    indexes[index] = window_end;
+    accumulators[index] = 0;
 
-      if (boomerang) {
-        bds[index] = 1;
-        return false;
-      }
+    if (!(continuous && !states[index])) notes[note_index] = -1;
+  }
+}
 
-      return !(continuous && !states[index]);
-    }
-  } else {
+void update_note_boomerang(int8_t index, byte note_index) {
+  sample_out_temp += read_ram_byte(indexes[index]) - 127;
+
+  accumulators[index] += pitches[index];
+
+  if (bds[index]) {
     indexes[index] = window_end - (accumulators[index] >> 6);
 
     if (indexes[index] < window_start) {
-      indexes[index] = window_end;
+      indexes[index] = window_start;
       accumulators[index] = 0;
+      bds[index] = 0;
 
-      if (boomerang) bds[index] = 0;
+      if (!(continuous && !states[index])) notes[note_index] = -1;
+    }
+  } else {
+    indexes[index] = window_start + (accumulators[index] >> 6);
 
-      return !(continuous && !states[index]);
+    if (indexes[index] > window_end) {
+      bds[index] = 1;
     }
   }
+}
 
-  return false;
+void update_note_basic(int8_t index, byte note_index) {
+  sample_out_temp += read_ram_byte(indexes[index]) - 127;
+
+  accumulators[index] += pitches[index];
+
+  indexes[index] = window_start + (accumulators[index] >> 6);
+
+  if (indexes[index] > window_end) {
+    indexes[index] = window_start;
+    accumulators[index] = 0;
+
+    if (!(continuous && !states[index])) notes[note_index] = -1;
+  }
 }
 
 void setup(void) {
   cli();  // disable Arduino interrupts to configure things without being interrupted
+
+  update_note = update_note_basic;
 
   // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1!
   pinMode(0, INPUT_PULLUP);
@@ -237,24 +260,16 @@ ISR(TIMER2_COMPA_vect) {
     return;
   }
 
-  // everything below here in the interrupt is playback code
-
-  if (notes[0] != -1) {
-    if (update_note(notes[0])) notes[0] = -1;
-  }
-
-  if (notes[1] != -1) {
-    if (update_note(notes[1])) notes[1] = -1;
-  }
-
-  if (notes[2] != -1) {
-    if (update_note(notes[2])) notes[2] = -1;
-  }
+  if (notes[0] != -1) update_note(notes[0], 0);
+  if (notes[1] != -1) update_note(notes[1], 1);
+  if (notes[2] != -1) update_note(notes[2], 2);
 
   if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
 
   if (am) {
-    sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) * ((sample_out_temp / 3) / 255)) << 1;
+    sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) >> (sample_out_temp >> 6));
+    sine_accumulator += 440 << 2;
+    sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
   }
 
   sample_out_temp = (sample_out_temp >> 1) + 127;
@@ -269,24 +284,19 @@ ISR(TIMER2_COMPA_vect) {
 
   sample_out = sample_out_temp;
 
-  delay_buffer[delay_buffer_index] = (sample_out >> 1);
+  if (delay_active) {
+    delay_buffer[delay_buffer_index] = (sample_out >> 1);
+    delay_buffer_index++;
+    if (delay_buffer_index == 1000) delay_buffer_index = 0;
+  }
 
   digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
-
   // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
   // Next three are config...look up them up in the datasheet.
   // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
   // So, use SPI "transfer16" method to send it all as one 16 bit word.
   SPI.transfer16(0b0111000000000000 | (sample_out << 4));
   digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
-
-  if (am) {
-    sine_accumulator += 440 << 2;
-    sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
-  }
-
-  delay_buffer_index++;
-  if (delay_buffer_index == 1000) delay_buffer_index = 0;
 }
 
 void enable_record() {
@@ -349,20 +359,22 @@ void assign_note(int8_t note_index) {
 };
 
 void loop(void) {
-  byte d0 = digitalRead(2);
-  byte d1 = digitalRead(3);
-  byte d2 = digitalRead(4);
-  byte d3 = digitalRead(5);
-  byte d4 = digitalRead(6);
-  byte d5 = digitalRead(7);
-  byte d6 = digitalRead(0);
-  byte d7 = digitalRead(1);
-  byte d8 = digitalRead(A1);
-  byte d9 = digitalRead(A4);
-  byte d10 = digitalRead(A2);
-  byte d11 = digitalRead(A3);
-
-  byte df = digitalRead(8);
+  byte p = PIND;
+  byte df = PINB & 0b00000001;
+  byte pa = PINC;
+  
+  byte d0 = p & 0b00000100;
+  byte d1 = p & 0b00001000;
+  byte d2 = p & 0b00010000;
+  byte d3 = p & 0b00100000;
+  byte d4 = p & 0b01000000;
+  byte d5 = p & 0b10000000;
+  byte d6 = p & 0b00000001;
+  byte d7 = p & 0b00000010;
+  byte d8  = pa & 0b00000010;
+  byte d9  = pa & 0b00000100;
+  byte d10 = pa & 0b00001000;
+  byte d11 = pa & 0b00010000;
 
   unsigned long time = millis();
 
