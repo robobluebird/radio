@@ -54,15 +54,15 @@ byte intermediate_pitch, main_pitch;
 // byte major_seventh = round(pitch * 1.887749);
 // byte octave = round(pitch * 2.0);
 
-byte pitches[13] = {
-  pitch, // <--
+byte standard_pitches[13] = {
+  pitch,  // <--
   round(pitch * 1.059463),
   round(pitch * 1.122462),
   round(pitch * 1.189207),
-  round(pitch * 1.259921), // <--
+  round(pitch * 1.259921),  // <--
   round(pitch * 1.334840),
   round(pitch * 1.414214),
-  round(pitch * 1.498307), // <--
+  round(pitch * 1.498307),  // <--
   round(pitch * 1.587401),
   round(pitch * 1.681793),
   round(pitch * 1.781797),
@@ -70,9 +70,26 @@ byte pitches[13] = {
   round(pitch * 2.0)
 };
 
+byte x4_pitches[12] = {
+  pitch,
+  round(pitch * 1.259921),
+  round(pitch * 1.498307),
+  pitch,
+  round(pitch * 1.259921),
+  round(pitch * 1.498307),
+  pitch,
+  round(pitch * 1.259921),
+  round(pitch * 1.498307),
+  pitch,
+  round(pitch * 1.259921),
+  round(pitch * 1.498307)
+};
+
+byte *pitches;
+
 const unsigned long dds_tune = 4294967296 / 8000;  // dds thing for sine playback for A.M. mode, don't worry about it
 
-uint16_t w1, e1, w2, e2, w3, e3, w4, e4, window_start, window_end;
+uint16_t windows[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Audio "delay"...play back stuff that happened already, in a repeating way, to make a pseudo echo effect
 byte delay_buffer[1000] = { 0 };
@@ -150,15 +167,13 @@ void update_note_reverse(int8_t index, byte note_index) {
 
   accumulators[index] += pitches[index];
 
-  indexes[index] = window_end - (accumulators[index] >> 6);
+  indexes[index] = windows[1] - (accumulators[index] >> 6);
 
-  if (indexes[index] < window_start) {
-    indexes[index] = window_end;
+  if (indexes[index] < windows[0]) {
+    indexes[index] = windows[1];
     accumulators[index] = 0;
 
     if (!(continuous && !states[index])) {
-      indexes[index] = window_end;
-      accumulators[index] = 0;
       notes[note_index] = -1;
     }
   }
@@ -170,23 +185,23 @@ void update_note_boomerang(int8_t index, byte note_index) {
   accumulators[index] += pitches[index];
 
   if (bds[index]) {
-    indexes[index] = window_end - (accumulators[index] >> 6);
+    indexes[index] = windows[1] - (accumulators[index] >> 6);
 
-    if (indexes[index] < window_start) {
-      indexes[index] = window_start;
+    if (indexes[index] < windows[0]) {
+      indexes[index] = windows[0];
       accumulators[index] = 0;
       bds[index] = 0;
 
       if (!(continuous && !states[index])) {
-        indexes[index] = window_start;
-        accumulators[index] = 0;
         notes[note_index] = -1;
       }
     }
   } else {
-    indexes[index] = window_start + (accumulators[index] >> 6);
+    indexes[index] = windows[0] + (accumulators[index] >> 6);
 
-    if (indexes[index] > window_end) {
+    if (indexes[index] > windows[1]) {
+      indexes[index] = windows[1];
+      accumulators[index] = 0;
       bds[index] = 1;
     }
   }
@@ -197,27 +212,23 @@ void update_note_basic(int8_t index, byte note_index) {
 
   accumulators[index] += pitches[index];
 
-  indexes[index] = window_start + (accumulators[index] >> 6);
+  indexes[index] = windows[0] + (accumulators[index] >> 6);
 
-  if (indexes[index] > window_end) {
-    indexes[index] = window_start;
+  if (indexes[index] > windows[1]) {
+    indexes[index] = windows[0];
     accumulators[index] = 0;
 
     if (!(continuous && !states[index])) {
-      indexes[index] = window_start;
-      accumulators[index] = 0;
       notes[note_index] = -1;
     }
   }
-}
-
-void update_note_x4(int8_t index, byte note_index) {
 }
 
 void setup(void) {
   cli();  // disable Arduino interrupts to configure things without being interrupted
 
   update_note = update_note_basic;
+  pitches = standard_pitches;
 
   // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1!
   pinMode(0, INPUT_PULLUP);
@@ -387,8 +398,8 @@ void loop(void) {
   byte d5 = p & 0b10000000;
   byte d6 = p & 0b00000001;
   byte d7 = p & 0b00000010;
-  byte d8  = pa & 0b00000010;
-  byte d9  = pa & 0b00010000;
+  byte d8 = pa & 0b00000010;
+  byte d9 = pa & 0b00010000;
   byte d10 = pa & 0b00000100;
   byte d11 = pa & 0b00001000;
 
@@ -403,8 +414,8 @@ void loop(void) {
       if (!sf) {
         if (!states[8]) {
           // set window1 for x4 mode
-          w1 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          e1 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+          // w1 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          // e1 = pitch * (map(analogRead(A7), 0, 1024, w1, sample_length) / pitch);
         } else {
           enable_record();
         }
@@ -424,8 +435,8 @@ void loop(void) {
     if (!states[1]) {
       if (!sf) {
         if (!states[8]) {
-          w2 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          e2 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+          // w2 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          // e2 = pitch * (map(analogRead(A7), 0, 1024, w2, sample_length) / pitch);
         } else {
           delay_active = !delay_active;
           delay_buffer_index = 0;
@@ -444,8 +455,8 @@ void loop(void) {
     if (!states[2]) {
       if (!sf) {
         if (!states[8]) {
-          w3 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          e3 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+          // w3 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          // e3 = pitch * (map(analogRead(A7), 0, 1024, w3, sample_length) / pitch);
         } else {
           continuous = !continuous;
         }
@@ -463,8 +474,8 @@ void loop(void) {
     if (!states[3]) {
       if (!sf) {
         if (!states[8]) {
-          w4 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          e4 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+          // w4 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          // e4 = pitch * (map(analogRead(A7), 0, 1024, w4, sample_length) / pitch);
         } else {
           reverse = !reverse;
           boomerang = 0;
@@ -531,7 +542,7 @@ void loop(void) {
 
     if (!states[7]) {
       if (!sf) {
-        x4 = !x4; // toggle window mode
+        x4 = !x4;  // toggle window mode
       } else {
         assign_note(7);
       }
@@ -544,7 +555,7 @@ void loop(void) {
     states[8] = d8;
 
     if (!states[8]) {
-      if (sf) assign_note(8); // if function key _isn't_ pressed
+      if (sf) assign_note(8);  // if function key _isn't_ pressed
     }
   }
 
@@ -580,7 +591,7 @@ void loop(void) {
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
   if (!recording && time % 500 == 0) {
-    window_start = map(analogRead(A6), 0, 1024, 100, sample_length);
-    window_end = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+    windows[0] = map(analogRead(A6), 0, 1024, 100, sample_length);
+    windows[1] = pitch * (map(analogRead(A7), 0, 1024, windows[0], sample_length) / pitch);
   }
 }
