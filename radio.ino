@@ -31,7 +31,7 @@ unsigned long ldf = 0;  // last debounce time of function button
 // reverse = play backward
 // boomerang = play forward then backward as one unit
 // am = like a.m. radio, use amplitude modulation to make the sound
-byte continuous, reverse, boomerang, am = 0;
+byte continuous, reverse, boomerang, am, porta, x4 = 0;
 
 // not audio "delay", but button press delay. If a button action happens, wait 50 ms to check the button again
 const unsigned long debounceDelay = 50;
@@ -40,6 +40,7 @@ int sample_out_temp;  // used for gathering currently playing samples, then chop
 byte sample_out;      // actual byte delivered to the DAC
 
 byte pitch = 60;
+byte intermediate_pitch, main_pitch;
 // byte minor_second = round(pitch * 1.059463);
 // byte major_second = round(pitch * 1.122462);
 // byte minor_third = round(pitch * 1.189207);
@@ -54,14 +55,14 @@ byte pitch = 60;
 // byte octave = round(pitch * 2.0);
 
 byte pitches[13] = {
-  pitch,
+  pitch, // <--
   round(pitch * 1.059463),
   round(pitch * 1.122462),
   round(pitch * 1.189207),
-  round(pitch * 1.259921),
+  round(pitch * 1.259921), // <--
   round(pitch * 1.334840),
   round(pitch * 1.414214),
-  round(pitch * 1.498307),
+  round(pitch * 1.498307), // <--
   round(pitch * 1.587401),
   round(pitch * 1.681793),
   round(pitch * 1.781797),
@@ -155,7 +156,11 @@ void update_note_reverse(int8_t index, byte note_index) {
     indexes[index] = window_end;
     accumulators[index] = 0;
 
-    if (!(continuous && !states[index])) notes[note_index] = -1;
+    if (!(continuous && !states[index])) {
+      indexes[index] = window_end;
+      accumulators[index] = 0;
+      notes[note_index] = -1;
+    }
   }
 }
 
@@ -172,7 +177,11 @@ void update_note_boomerang(int8_t index, byte note_index) {
       accumulators[index] = 0;
       bds[index] = 0;
 
-      if (!(continuous && !states[index])) notes[note_index] = -1;
+      if (!(continuous && !states[index])) {
+        indexes[index] = window_start;
+        accumulators[index] = 0;
+        notes[note_index] = -1;
+      }
     }
   } else {
     indexes[index] = window_start + (accumulators[index] >> 6);
@@ -194,8 +203,15 @@ void update_note_basic(int8_t index, byte note_index) {
     indexes[index] = window_start;
     accumulators[index] = 0;
 
-    if (!(continuous && !states[index])) notes[note_index] = -1;
+    if (!(continuous && !states[index])) {
+      indexes[index] = window_start;
+      accumulators[index] = 0;
+      notes[note_index] = -1;
+    }
   }
+}
+
+void update_note_x4(int8_t index, byte note_index) {
 }
 
 void setup(void) {
@@ -362,7 +378,7 @@ void loop(void) {
   byte p = PIND;
   byte df = PINB & 0b00000001;
   byte pa = PINC;
-  
+
   byte d0 = p & 0b00000100;
   byte d1 = p & 0b00001000;
   byte d2 = p & 0b00010000;
@@ -372,9 +388,9 @@ void loop(void) {
   byte d6 = p & 0b00000001;
   byte d7 = p & 0b00000010;
   byte d8  = pa & 0b00000010;
-  byte d9  = pa & 0b00000100;
-  byte d10 = pa & 0b00001000;
-  byte d11 = pa & 0b00010000;
+  byte d9  = pa & 0b00010000;
+  byte d10 = pa & 0b00000100;
+  byte d11 = pa & 0b00001000;
 
   unsigned long time = millis();
 
@@ -385,10 +401,14 @@ void loop(void) {
 
     if (!states[0]) {
       if (!sf) {
-        enable_record();
+        if (!states[8]) {
+          // set window1 for x4 mode
+          w1 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          e1 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+        } else {
+          enable_record();
+        }
       } else {
-        indexes[0] = reverse ? window_end : window_start;
-        accumulators[0] = 0;
         assign_note(0);
       }
     } else {
@@ -403,11 +423,14 @@ void loop(void) {
 
     if (!states[1]) {
       if (!sf) {
-        delay_active = !delay_active;
-        delay_buffer_index = 0;
+        if (!states[8]) {
+          w2 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          e2 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+        } else {
+          delay_active = !delay_active;
+          delay_buffer_index = 0;
+        }
       } else {
-        indexes[1] = reverse ? window_end : window_start;
-        accumulators[1] = 0;
         assign_note(1);
       }
     }
@@ -420,10 +443,13 @@ void loop(void) {
 
     if (!states[2]) {
       if (!sf) {
-        continuous = !continuous;
+        if (!states[8]) {
+          w3 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          e3 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+        } else {
+          continuous = !continuous;
+        }
       } else {
-        indexes[2] = reverse ? window_end : window_start;
-        accumulators[2] = 0;
         assign_note(2);
       }
     }
@@ -436,11 +462,20 @@ void loop(void) {
 
     if (!states[3]) {
       if (!sf) {
-        reverse = !reverse;
-        boomerang = 0;
+        if (!states[8]) {
+          w4 = map(analogRead(A6), 0, 1024, 100, sample_length);
+          e4 = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
+        } else {
+          reverse = !reverse;
+          boomerang = 0;
+
+          if (reverse) {
+            update_note = update_note_reverse;
+          } else {
+            update_note = update_note_basic;
+          }
+        }
       } else {
-        indexes[3] = reverse ? window_end : window_start;
-        accumulators[3] = 0;
         assign_note(3);
       }
     }
@@ -455,9 +490,13 @@ void loop(void) {
       if (!sf) {
         boomerang = !boomerang;
         reverse = 0;
+
+        if (boomerang) {
+          update_note = update_note_boomerang;
+        } else {
+          update_note = update_note_basic;
+        }
       } else {
-        indexes[4] = reverse ? window_end : window_start;
-        accumulators[4] = 0;
         assign_note(4);
       }
     }
@@ -471,11 +510,7 @@ void loop(void) {
     if (!states[5]) {
       if (!sf) {
         am = !am;
-        sine_index = 0;
-        sine_accumulator = 0;
       } else {
-        indexes[5] = reverse ? window_end : window_start;
-        accumulators[5] = 0;
         assign_note(5);
       }
     }
@@ -486,11 +521,7 @@ void loop(void) {
   } else if (time - ld6 > debounceDelay) {
     states[6] = d6;
 
-    if (!states[6]) {
-      indexes[6] = reverse ? window_end : window_start;
-      accumulators[6] = 0;
-      assign_note(6);
-    }
+    if (!states[6]) assign_note(6);
   }
 
   if (d7 == states[7]) {
@@ -499,9 +530,11 @@ void loop(void) {
     states[7] = d7;
 
     if (!states[7]) {
-      indexes[7] = reverse ? window_end : window_start;
-      accumulators[7] = 0;
-      assign_note(7);
+      if (!sf) {
+        x4 = !x4; // toggle window mode
+      } else {
+        assign_note(7);
+      }
     }
   }
 
@@ -511,9 +544,7 @@ void loop(void) {
     states[8] = d8;
 
     if (!states[8]) {
-      indexes[8] = reverse ? window_end : window_start;
-      accumulators[8] = 0;
-      assign_note(8);
+      if (sf) assign_note(8); // if function key _isn't_ pressed
     }
   }
 
@@ -522,11 +553,7 @@ void loop(void) {
   } else if (time - ld9 > debounceDelay) {
     states[9] = d9;
 
-    if (!states[9]) {
-      indexes[9] = reverse ? window_end : window_start;
-      accumulators[9] = 0;
-      assign_note(9);
-    }
+    if (!states[9]) assign_note(9);
   }
 
   if (d10 == states[10]) {
@@ -534,11 +561,7 @@ void loop(void) {
   } else if (time - ld10 > debounceDelay) {
     states[10] = d10;
 
-    if (!states[10]) {
-      indexes[10] = reverse ? window_end : window_start;
-      accumulators[10] = 0;
-      assign_note(10);
-    }
+    if (!states[10]) assign_note(10);
   }
 
   if (d11 == states[11]) {
@@ -546,11 +569,7 @@ void loop(void) {
   } else if (time - ld11 > debounceDelay) {
     states[11] = d11;
 
-    if (!states[11]) {
-      indexes[11] = reverse ? window_end : window_start;
-      accumulators[11] = 0;
-      assign_note(11);
-    }
+    if (!states[11]) assign_note(11);
   }
 
   if (df == sf) {
@@ -560,8 +579,8 @@ void loop(void) {
   }
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
-  if (!recording) {
+  if (!recording && time % 500 == 0) {
     window_start = map(analogRead(A6), 0, 1024, 100, sample_length);
-    window_end = map(analogRead(A7), 0, 1024, window_start, sample_length);
+    window_end = pitch * (map(analogRead(A7), 0, 1024, window_start, sample_length) / pitch);
   }
 }
