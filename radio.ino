@@ -17,7 +17,7 @@ uint32_t accumulators[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 byte bds[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 byte windex_for_index_standard[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-byte windex_for_index_x4[12]     = { 2, 2, 2, 4, 4, 4, 6, 6, 6, 8, 8, 8 };
+byte windex_for_index_x4[12] = { 2, 2, 2, 4, 4, 4, 6, 6, 6, 8, 8, 8 };
 byte *windex;
 
 bool (*update_note)(int8_t, byte, byte) = NULL;
@@ -44,34 +44,36 @@ int sample_out_temp;  // used for gathering currently playing samples, then chop
 byte sample_out;      // actual byte delivered to the DAC
 
 byte pitch = 60;
-byte intermediate_pitch, main_pitch;
-// byte minor_second = round(pitch * 1.059463);
-// byte major_second = round(pitch * 1.122462);
-// byte minor_third = round(pitch * 1.189207);
-// byte major_third = round(pitch * 1.259921);
-// byte perfect_fourth = round(pitch * 1.334840);
-// byte tritone = round(pitch * 1.414214);
-// byte perfect_fifth = round(pitch * 1.498307);
-// byte minor_sixth = round(pitch * 1.587401);
-// byte major_sixth = round(pitch * 1.681793);
-// byte minor_seventh = round(pitch * 1.781797);
-// byte major_seventh = round(pitch * 1.887749);
-// byte octave = round(pitch * 2.0);
+float pitch_mod = 1.0;
 
-byte standard_pitches[13] = {
-  pitch,  // <--
-  round(pitch * 1.059463),
-  round(pitch * 1.122462),
-  round(pitch * 1.189207),
-  round(pitch * 1.259921),  // <--
-  round(pitch * 1.334840),
-  round(pitch * 1.414214),
-  round(pitch * 1.498307),  // <--
-  round(pitch * 1.587401),
-  round(pitch * 1.681793),
-  round(pitch * 1.781797),
-  round(pitch * 1.887749),
-  round(pitch * 2.0)
+float pitch_intervals[12] = {
+  1.0,
+  1.059463, // minor second
+  1.122462, // major second
+  1.189207, // minor third
+  1.259921, // major third
+  1.334840, // perfect fourth
+  1.414214, // tritone
+  1.498307, // perfect fifth
+  1.587401, // minor sixth
+  1.681793, // major sixth
+  1.781797, // minor seventh
+  1.887749, // major seventh
+};
+
+byte standard_pitches[12] = {
+  round(pitch * pitch_mod),  // <--
+  round(pitch * 1.059463 * pitch_mod),
+  round(pitch * 1.122462 * pitch_mod),
+  round(pitch * 1.189207 * pitch_mod),
+  round(pitch * 1.259921 * pitch_mod),  // <--
+  round(pitch * 1.334840 * pitch_mod),
+  round(pitch * 1.414214 * pitch_mod),
+  round(pitch * 1.498307 * pitch_mod),  // <--
+  round(pitch * 1.587401 * pitch_mod),
+  round(pitch * 1.681793 * pitch_mod),
+  round(pitch * 1.781797 * pitch_mod),
+  round(pitch * 1.887749 * pitch_mod)
 };
 
 byte x4_pitches[12] = {
@@ -104,6 +106,18 @@ uint16_t sample_length;  // set every time we record, based on how long we recor
 byte recording;          // a boolean byte where 0 = false and 1 = true...are we currently recording?
 
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
+
+void recalculate_pitches() {
+  for (int i = 0; i < 12; i++) {
+    standard_pitches[i] = pitch * pitch_intervals[i] * pitch_mod;
+
+    if (i % 3 == 0) {
+      x4_pitches[i] = pitch * pitch_intervals[0] * pitch_mod;
+      x4_pitches[i + 1] = pitch * pitch_intervals[4] * pitch_mod;
+      x4_pitches[i + 2] = pitch * pitch_intervals[7] * pitch_mod;
+    }
+  }
+}
 
 void set_ram_byte_mode() {
   digitalWrite(9, LOW);
@@ -378,6 +392,9 @@ void disable_record() {
 
   digitalWrite(A5, LOW);  // "recording" LED off
 
+  pitch_mod = 1.0;
+  recalculate_pitches();
+
   sei();
 }
 
@@ -396,7 +413,7 @@ void assign_note(int8_t note_index) {
 void led_flash(byte times) {
   byte i = 0;
 
-  for(i; i < times; i++) {
+  for (i; i < times; i++) {
     digitalWrite(A5, HIGH);
     delay(100);
     digitalWrite(A5, LOW);
@@ -602,7 +619,14 @@ void loop(void) {
   } else if (time - ld10 > debounceDelay) {
     states[10] = d10;
 
-    if (!states[10]) assign_note(10);
+    if (!states[10]) {
+      if (!sf) {
+        pitch_mod *= 0.5;
+        recalculate_pitches();
+      } else {
+        assign_note(10);
+      }
+    }
   }
 
   if (d11 == states[11]) {
@@ -610,7 +634,14 @@ void loop(void) {
   } else if (time - ld11 > debounceDelay) {
     states[11] = d11;
 
-    if (!states[11]) assign_note(11);
+    if (!states[11]) {
+      if (!sf) {
+        pitch_mod *= 2;
+        recalculate_pitches();
+      } else {
+        assign_note(11);
+      }
+    }
   }
 
   if (df == sf) {
