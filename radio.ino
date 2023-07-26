@@ -16,7 +16,11 @@ uint16_t indexes[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t accumulators[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 byte bds[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-bool (*update_note)(int8_t, byte) = NULL;
+byte windex_for_index_standard[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+byte windex_for_index_x4[12]     = { 2, 2, 2, 4, 4, 4, 6, 6, 6, 8, 8, 8 };
+byte *windex;
+
+bool (*update_note)(int8_t, byte, byte) = NULL;
 
 uint16_t sine_index;
 uint32_t sine_accumulator;
@@ -162,15 +166,15 @@ void end_writing_ram_sequential() {
   recording = 0;  // boolean "0"
 }
 
-void update_note_reverse(int8_t index, byte note_index) {
+void update_note_reverse(int8_t index, byte note_index, byte windex) {
   sample_out_temp += read_ram_byte(indexes[index]) - 127;
 
   accumulators[index] += pitches[index];
 
-  indexes[index] = windows[1] - (accumulators[index] >> 6);
+  indexes[index] = windows[windex + 1] - (accumulators[index] >> 6);
 
-  if (indexes[index] < windows[0]) {
-    indexes[index] = windows[1];
+  if (indexes[index] < windows[windex]) {
+    indexes[index] = windows[windex + 1];
     accumulators[index] = 0;
 
     if (!(continuous && !states[index])) {
@@ -179,16 +183,16 @@ void update_note_reverse(int8_t index, byte note_index) {
   }
 }
 
-void update_note_boomerang(int8_t index, byte note_index) {
+void update_note_boomerang(int8_t index, byte note_index, byte windex) {
   sample_out_temp += read_ram_byte(indexes[index]) - 127;
 
   accumulators[index] += pitches[index];
 
   if (bds[index]) {
-    indexes[index] = windows[1] - (accumulators[index] >> 6);
+    indexes[index] = windows[windex + 1] - (accumulators[index] >> 6);
 
-    if (indexes[index] < windows[0]) {
-      indexes[index] = windows[0];
+    if (indexes[index] < windows[windex]) {
+      indexes[index] = windows[windex];
       accumulators[index] = 0;
       bds[index] = 0;
 
@@ -197,25 +201,25 @@ void update_note_boomerang(int8_t index, byte note_index) {
       }
     }
   } else {
-    indexes[index] = windows[0] + (accumulators[index] >> 6);
+    indexes[index] = windows[windex] + (accumulators[index] >> 6);
 
-    if (indexes[index] > windows[1]) {
-      indexes[index] = windows[1];
+    if (indexes[index] > windows[windex + 1]) {
+      indexes[index] = windows[windex + 1];
       accumulators[index] = 0;
       bds[index] = 1;
     }
   }
 }
 
-void update_note_basic(int8_t index, byte note_index) {
+void update_note_basic(int8_t index, byte note_index, byte windex) {
   sample_out_temp += read_ram_byte(indexes[index]) - 127;
 
   accumulators[index] += pitches[index];
 
-  indexes[index] = windows[0] + (accumulators[index] >> 6);
+  indexes[index] = windows[windex] + (accumulators[index] >> 6);
 
-  if (indexes[index] > windows[1]) {
-    indexes[index] = windows[0];
+  if (indexes[index] > windows[windex + 1]) {
+    indexes[index] = windows[windex];
     accumulators[index] = 0;
 
     if (!(continuous && !states[index])) {
@@ -229,6 +233,7 @@ void setup(void) {
 
   update_note = update_note_basic;
   pitches = standard_pitches;
+  windex = windex_for_index_standard;
 
   // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1!
   pinMode(0, INPUT_PULLUP);
@@ -270,10 +275,11 @@ void setup(void) {
   initial_admux = ADMUX;
 
   sei();  // re-enable interrupts (let's do this)
+
+  led_flash(1);
 }
 
 ISR(TIMER2_COMPA_vect) {
-
   // "recording" boolean is set to 1 when recording starts
   // when recording ends, "recording" boolean is set to 0, so the rest of the code in
   // the interrupt will run instead
@@ -287,15 +293,17 @@ ISR(TIMER2_COMPA_vect) {
     return;
   }
 
-  if (notes[0] != -1) update_note(notes[0], 0);
-  if (notes[1] != -1) update_note(notes[1], 1);
-  if (notes[2] != -1) update_note(notes[2], 2);
+  // params: button index (from 0 to 11), note index (from 0 to 2), window index (from 0 to 9)
+  if (notes[0] != -1) update_note(notes[0], 0, windex[notes[0]]);
+  if (notes[1] != -1) update_note(notes[1], 1, windex[notes[1]]);
+  if (notes[2] != -1) update_note(notes[2], 2, windex[notes[2]]);
 
   if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
 
   if (am) {
-    sample_out_temp = ((pgm_read_byte(&sine_table[sine_index]) - 127) >> (sample_out_temp >> 6));
-    sine_accumulator += 440 << 2;
+    int thing = sample_out_temp >> 7;
+    sample_out_temp = thing == 0 ? 0 : (pgm_read_byte(&sine_table[sine_index]) - 127) >> thing;
+    sine_accumulator += 220 << 2;
     sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
   }
 
@@ -385,6 +393,17 @@ void assign_note(int8_t note_index) {
   }
 };
 
+void led_flash(byte times) {
+  byte i = 0;
+
+  for(i; i < times; i++) {
+    digitalWrite(A5, HIGH);
+    delay(100);
+    digitalWrite(A5, LOW);
+    if (i < times - 1) delay(100);
+  }
+}
+
 void loop(void) {
   byte p = PIND;
   byte df = PINB & 0b00000001;
@@ -413,9 +432,9 @@ void loop(void) {
     if (!states[0]) {
       if (!sf) {
         if (!states[8]) {
-          // set window1 for x4 mode
-          // w1 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          // e1 = pitch * (map(analogRead(A7), 0, 1024, w1, sample_length) / pitch);
+          windows[2] = map(analogRead(A6), 0, 1024, 100, sample_length);
+          windows[3] = pitch * (map(analogRead(A7), 0, 1024, windows[2], sample_length) / pitch);
+          led_flash(1);
         } else {
           enable_record();
         }
@@ -435,8 +454,9 @@ void loop(void) {
     if (!states[1]) {
       if (!sf) {
         if (!states[8]) {
-          // w2 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          // e2 = pitch * (map(analogRead(A7), 0, 1024, w2, sample_length) / pitch);
+          windows[4] = map(analogRead(A6), 0, 1024, 100, sample_length);
+          windows[5] = pitch * (map(analogRead(A7), 0, 1024, windows[4], sample_length) / pitch);
+          led_flash(2);
         } else {
           delay_active = !delay_active;
           delay_buffer_index = 0;
@@ -455,8 +475,9 @@ void loop(void) {
     if (!states[2]) {
       if (!sf) {
         if (!states[8]) {
-          // w3 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          // e3 = pitch * (map(analogRead(A7), 0, 1024, w3, sample_length) / pitch);
+          windows[6] = map(analogRead(A6), 0, 1024, 100, sample_length);
+          windows[7] = pitch * (map(analogRead(A7), 0, 1024, windows[6], sample_length) / pitch);
+          led_flash(3);
         } else {
           continuous = !continuous;
         }
@@ -474,8 +495,9 @@ void loop(void) {
     if (!states[3]) {
       if (!sf) {
         if (!states[8]) {
-          // w4 = map(analogRead(A6), 0, 1024, 100, sample_length);
-          // e4 = pitch * (map(analogRead(A7), 0, 1024, w4, sample_length) / pitch);
+          windows[8] = map(analogRead(A6), 0, 1024, 100, sample_length);
+          windows[9] = pitch * (map(analogRead(A7), 0, 1024, windows[8], sample_length) / pitch);
+          led_flash(4);
         } else {
           reverse = !reverse;
           boomerang = 0;
@@ -542,7 +564,15 @@ void loop(void) {
 
     if (!states[7]) {
       if (!sf) {
-        x4 = !x4;  // toggle window mode
+        x4 = !x4;
+
+        if (x4) {
+          pitches = x4_pitches;
+          windex = windex_for_index_x4;
+        } else {
+          pitches = standard_pitches;
+          windex = windex_for_index_standard;
+        }
       } else {
         assign_note(7);
       }
