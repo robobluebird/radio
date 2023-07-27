@@ -48,17 +48,17 @@ float pitch_mod = 1.0;
 
 float pitch_intervals[12] = {
   1.0,
-  1.059463, // minor second
-  1.122462, // major second
-  1.189207, // minor third
-  1.259921, // major third
-  1.334840, // perfect fourth
-  1.414214, // tritone
-  1.498307, // perfect fifth
-  1.587401, // minor sixth
-  1.681793, // major sixth
-  1.781797, // minor seventh
-  1.887749, // major seventh
+  1.059463,  // minor second
+  1.122462,  // major second
+  1.189207,  // minor third
+  1.259921,  // major third
+  1.334840,  // perfect fourth
+  1.414214,  // tritone
+  1.498307,  // perfect fifth
+  1.587401,  // minor sixth
+  1.681793,  // major sixth
+  1.781797,  // minor seventh
+  1.887749,  // major seventh
 };
 
 byte standard_pitches[12] = {
@@ -456,6 +456,8 @@ void loop(void) {
           enable_record();
         }
       } else {
+        indexes[0] = windows[reverse ? windex[0] + 1 : windex[0]];
+        accumulators[0] = 0;
         assign_note(0);
       }
     } else {
@@ -479,6 +481,8 @@ void loop(void) {
           delay_buffer_index = 0;
         }
       } else {
+        indexes[1] = windows[reverse ? windex[1] + 1 : windex[1]];
+        accumulators[1] = 0;
         assign_note(1);
       }
     }
@@ -499,6 +503,8 @@ void loop(void) {
           continuous = !continuous;
         }
       } else {
+        indexes[2] = windows[reverse ? windex[2] + 1 : windex[2]];
+        accumulators[2] = 0;
         assign_note(2);
       }
     }
@@ -526,6 +532,8 @@ void loop(void) {
           }
         }
       } else {
+        indexes[3] = windows[reverse ? windex[3] + 1 : windex[3]];
+        accumulators[3] = 0;
         assign_note(3);
       }
     }
@@ -547,6 +555,8 @@ void loop(void) {
           update_note = update_note_basic;
         }
       } else {
+        indexes[4] = windows[reverse ? windex[4] + 1 : windex[4]];
+        accumulators[4] = 0;
         assign_note(4);
       }
     }
@@ -561,6 +571,8 @@ void loop(void) {
       if (!sf) {
         am = !am;
       } else {
+        indexes[5] = windows[reverse ? windex[5] + 1 : windex[5]];
+        accumulators[5] = 0;
         assign_note(5);
       }
     }
@@ -571,7 +583,11 @@ void loop(void) {
   } else if (time - ld6 > debounceDelay) {
     states[6] = d6;
 
-    if (!states[6]) assign_note(6);
+    if (!states[6]) {
+      indexes[6] = windows[reverse ? windex[6] + 1 : windex[6]];
+      accumulators[6] = 0;
+      assign_note(6);
+    }
   }
 
   if (d7 == states[7]) {
@@ -591,6 +607,8 @@ void loop(void) {
           windex = windex_for_index_standard;
         }
       } else {
+        indexes[7] = windows[reverse ? windex[7] + 1 : windex[7]];
+        accumulators[7] = 0;
         assign_note(7);
       }
     }
@@ -602,7 +620,11 @@ void loop(void) {
     states[8] = d8;
 
     if (!states[8]) {
-      if (sf) assign_note(8);  // if function key _isn't_ pressed
+      if (sf) {  // if function key _isn't_ pressed
+        indexes[8] = windows[reverse ? windex[8] + 1 : windex[8]];
+        accumulators[8] = 0;
+        assign_note(8);
+      }
     }
   }
 
@@ -611,7 +633,11 @@ void loop(void) {
   } else if (time - ld9 > debounceDelay) {
     states[9] = d9;
 
-    if (!states[9]) assign_note(9);
+    if (!states[9]) {
+      indexes[9] = windows[reverse ? windex[9] + 1 : windex[9]];
+      accumulators[9] = 0;
+      assign_note(9);
+    }
   }
 
   if (d10 == states[10]) {
@@ -624,6 +650,8 @@ void loop(void) {
         pitch_mod *= 0.5;
         recalculate_pitches();
       } else {
+        indexes[10] = windows[reverse ? windex[10] + 1 : windex[10]];
+        accumulators[10] = 0;
         assign_note(10);
       }
     }
@@ -639,6 +667,8 @@ void loop(void) {
         pitch_mod *= 2;
         recalculate_pitches();
       } else {
+        indexes[11] = windows[reverse ? windex[11] + 1 : windex[11]];
+        accumulators[11] = 0;
         assign_note(11);
       }
     }
