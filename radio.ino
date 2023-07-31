@@ -11,13 +11,13 @@ const byte sine_table[] PROGMEM = { 128, 131, 134, 137, 140, 143, 146, 149, 152,
                                     65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124 };
 
 int8_t notes[3] = { -1, -1, -1 };
-byte states[12] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-uint16_t indexes[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-uint32_t accumulators[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-byte bds[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+byte states[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+uint16_t indexes[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+uint32_t accumulators[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+byte bds[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
-byte windex_for_index_standard[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-byte windex_for_index_x4[12] = { 2, 2, 2, 4, 4, 4, 6, 6, 6, 8, 8, 8 };
+byte windex_for_index_standard[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+byte windex_for_index_x4[8] = { 2, 2, 4, 4, 6, 6, 8, 8 };
 byte *windex;
 
 bool (*update_note)(int8_t, byte, byte) = NULL;
@@ -46,7 +46,7 @@ byte sample_out;      // actual byte delivered to the DAC
 byte pitch = 60;
 float pitch_mod = 1.0;
 
-float pitch_intervals[12] = {
+float pitch_intervals[13] = {
   1.0,
   1.059463,  // minor second
   1.122462,  // major second
@@ -59,39 +59,75 @@ float pitch_intervals[12] = {
   1.681793,  // major sixth
   1.781797,  // minor seventh
   1.887749,  // major seventh
+  2.0        // octave
 };
 
-byte standard_pitches[12] = {
-  round(pitch * pitch_mod),  // <--
-  round(pitch * 1.059463 * pitch_mod),
-  round(pitch * 1.122462 * pitch_mod),
-  round(pitch * 1.189207 * pitch_mod),
-  round(pitch * 1.259921 * pitch_mod),  // <--
-  round(pitch * 1.334840 * pitch_mod),
-  round(pitch * 1.414214 * pitch_mod),
-  round(pitch * 1.498307 * pitch_mod),  // <--
-  round(pitch * 1.587401 * pitch_mod),
-  round(pitch * 1.681793 * pitch_mod),
-  round(pitch * 1.781797 * pitch_mod),
-  round(pitch * 1.887749 * pitch_mod)
+byte major_pitches[8] = {
+  round(pitch * pitch_mod),
+  round(pitch *pitch_intervals[2] * pitch_mod),
+  round(pitch *pitch_intervals[4] * pitch_mod),
+  round(pitch *pitch_intervals[5] * pitch_mod),
+  round(pitch *pitch_intervals[7] * pitch_mod),
+  round(pitch *pitch_intervals[9] * pitch_mod),
+  round(pitch *pitch_intervals[11] * pitch_mod),
+  round(pitch *pitch_intervals[12] * pitch_mod)
 };
 
-byte x4_pitches[12] = {
+byte major_shifted_pitches[8] = {
+  round(pitch * pitch_mod),
+  round(pitch *pitch_intervals[1] * pitch_mod),
+  round(pitch *pitch_intervals[3] * pitch_mod),
+  round(pitch *pitch_intervals[5] * pitch_mod),
+  round(pitch *pitch_intervals[6] * pitch_mod),
+  round(pitch *pitch_intervals[8] * pitch_mod),
+  round(pitch *pitch_intervals[10] * pitch_mod),
+  round(pitch *pitch_intervals[12] * pitch_mod)
+};
+
+byte minor_pitches[8] = {
+  round(pitch * pitch_mod),
+  round(pitch *pitch_intervals[2] * pitch_mod),
+  round(pitch *pitch_intervals[3] * pitch_mod),
+  round(pitch *pitch_intervals[5] * pitch_mod),
+  round(pitch *pitch_intervals[7] * pitch_mod),
+  round(pitch *pitch_intervals[10] * pitch_mod),
+  round(pitch *pitch_intervals[11] * pitch_mod),
+  round(pitch *pitch_intervals[12] * pitch_mod)
+};
+
+byte minor_shifted_pitches[8] = {
+  round(pitch * pitch_mod),
+  round(pitch *pitch_intervals[1] * pitch_mod),
+  round(pitch *pitch_intervals[4] * pitch_mod),
+  round(pitch *pitch_intervals[5] * pitch_mod),
+  round(pitch *pitch_intervals[6] * pitch_mod),
+  round(pitch *pitch_intervals[8] * pitch_mod),
+  round(pitch *pitch_intervals[9] * pitch_mod),
+  round(pitch *pitch_intervals[12] * pitch_mod)
+};
+
+/**
+  major: whole, whole, half, whole, whole, whole, half
+
+  minor:
+   - natural: whole, half, whole, whole, half, whole, whole
+   - harmonic: whole, half, whole, whole, half, augmented second, half <--
+   - melodic: whole, half, whole, whole, whole, whole, half
+*/
+
+byte x4_pitches[8] = {
   pitch,
-  round(pitch * 1.259921),
   round(pitch * 1.498307),
   pitch,
-  round(pitch * 1.259921),
   round(pitch * 1.498307),
   pitch,
-  round(pitch * 1.259921),
   round(pitch * 1.498307),
   pitch,
-  round(pitch * 1.259921),
   round(pitch * 1.498307)
 };
 
 byte *pitches;
+byte major_or_minor;
 
 const unsigned long dds_tune = 4294967296 / 8000;  // dds thing for sine playback for A.M. mode, don't worry about it
 
@@ -108,15 +144,50 @@ byte recording;          // a boolean byte where 0 = false and 1 = true...are we
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
 
 void recalculate_pitches() {
-  for (int i = 0; i < 12; i++) {
-    standard_pitches[i] = pitch * pitch_intervals[i] * pitch_mod;
+  major_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
+  major_pitches[1] = pitch * pitch_intervals[2] * pitch_mod;
+  major_pitches[2] = pitch * pitch_intervals[4] * pitch_mod;
+  major_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
+  major_pitches[4] = pitch * pitch_intervals[7] * pitch_mod;
+  major_pitches[5] = pitch * pitch_intervals[9] * pitch_mod;
+  major_pitches[6] = pitch * pitch_intervals[11] * pitch_mod;
+  major_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
 
-    if (i % 3 == 0) {
-      x4_pitches[i] = pitch * pitch_intervals[0] * pitch_mod;
-      x4_pitches[i + 1] = pitch * pitch_intervals[4] * pitch_mod;
-      x4_pitches[i + 2] = pitch * pitch_intervals[7] * pitch_mod;
-    }
-  }
+  major_shifted_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
+  major_shifted_pitches[1] = pitch * pitch_intervals[1] * pitch_mod;
+  major_shifted_pitches[2] = pitch * pitch_intervals[3] * pitch_mod;
+  major_shifted_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
+  major_shifted_pitches[4] = pitch * pitch_intervals[6] * pitch_mod;
+  major_shifted_pitches[5] = pitch * pitch_intervals[8] * pitch_mod;
+  major_shifted_pitches[6] = pitch * pitch_intervals[10] * pitch_mod;
+  major_shifted_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+
+  minor_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
+  minor_pitches[1] = pitch * pitch_intervals[2] * pitch_mod;
+  minor_pitches[2] = pitch * pitch_intervals[3] * pitch_mod;
+  minor_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
+  minor_pitches[4] = pitch * pitch_intervals[7] * pitch_mod;
+  minor_pitches[5] = pitch * pitch_intervals[10] * pitch_mod;
+  minor_pitches[6] = pitch * pitch_intervals[11] * pitch_mod;
+  minor_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+
+  minor_shifted_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
+  minor_shifted_pitches[1] = pitch * pitch_intervals[1] * pitch_mod;
+  minor_shifted_pitches[2] = pitch * pitch_intervals[4] * pitch_mod;
+  minor_shifted_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
+  minor_shifted_pitches[4] = pitch * pitch_intervals[6] * pitch_mod;
+  minor_shifted_pitches[5] = pitch * pitch_intervals[8] * pitch_mod;
+  minor_shifted_pitches[6] = pitch * pitch_intervals[9] * pitch_mod;
+  minor_shifted_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+
+  x4_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
+  x4_pitches[1] = pitch * pitch_intervals[7] * pitch_mod;
+  x4_pitches[2] = pitch * pitch_intervals[0] * pitch_mod;
+  x4_pitches[3] = pitch * pitch_intervals[7] * pitch_mod;
+  x4_pitches[4] = pitch * pitch_intervals[0] * pitch_mod;
+  x4_pitches[5] = pitch * pitch_intervals[7] * pitch_mod;
+  x4_pitches[6] = pitch * pitch_intervals[0] * pitch_mod;
+  x4_pitches[7] = pitch * pitch_intervals[7] * pitch_mod;
 }
 
 void set_ram_byte_mode() {
@@ -246,7 +317,7 @@ void setup(void) {
   cli();  // disable Arduino interrupts to configure things without being interrupted
 
   update_note = update_note_basic;
-  pitches = standard_pitches;
+  pitches = major_pitches;
   windex = windex_for_index_standard;
 
   // Use Arduino internal pullups to reduce necessary components. That means a button press will make a 0 and a button not-pressed will be 1!
@@ -260,9 +331,9 @@ void setup(void) {
   pinMode(7, INPUT_PULLUP);
   pinMode(8, INPUT_PULLUP);
   pinMode(A1, INPUT_PULLUP);
-  pinMode(A2, INPUT_PULLUP);
-  pinMode(A3, INPUT_PULLUP);
-  pinMode(A4, INPUT_PULLUP);
+  // pinMode(A2, INPUT_PULLUP);
+  // pinMode(A3, INPUT_PULLUP);
+  // pinMode(A4, INPUT_PULLUP);
 
   pinMode(A5, OUTPUT);
 
@@ -293,21 +364,46 @@ void setup(void) {
   led_flash(1);
 }
 
+byte passthrough, last_sample, clipped;
+
 ISR(TIMER2_COMPA_vect) {
+  sample_out_temp = 0;
+  
   // "recording" boolean is set to 1 when recording starts
   // when recording ends, "recording" boolean is set to 0, so the rest of the code in
   // the interrupt will run instead
   if (recording) {
 
-    // in sequential mode the RAM handles updating the address pointer after every write
-    // so all we have to do is transfer another byte!
-    write_ram_byte_sequential(ADCH);
+    if (!passthrough) {
+      // in sequential mode the RAM handles updating the address pointer after every write
+      // so all we have to do is transfer another byte!
+      last_sample = ADCH;
+      write_ram_byte_sequential(last_sample);
+    } else {
+      sample_out = ADCH;
+
+      if (delay_active) sample_out += delay_buffer[delay_buffer_index] - 127;
+
+      digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
+      // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
+      // Next three are config...look up them up in the datasheet.
+      // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
+      // So, use SPI "transfer16" method to send it all as one 16 bit word.
+      SPI.transfer16(0b0111000000000000 | (sample_out << 4));
+      digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
+
+      if (delay_active) {
+        delay_buffer[delay_buffer_index] = (sample_out >> 1);
+        delay_buffer_index++;
+        if (delay_buffer_index == 1000) delay_buffer_index = 0;
+      }
+    }
 
     // early return from timer interrupt
     return;
   }
 
-  // params: button index (from 0 to 11), note index (from 0 to 2), window index (from 0 to 9)
+  // params: button index (from 0 to 8), note index (from 0 to 2), window index (from 0 to 9)
   if (notes[0] != -1) update_note(notes[0], 0, windex[notes[0]]);
   if (notes[1] != -1) update_note(notes[1], 1, windex[notes[1]]);
   if (notes[2] != -1) update_note(notes[2], 2, windex[notes[2]]);
@@ -315,10 +411,9 @@ ISR(TIMER2_COMPA_vect) {
   if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
 
   if (am) {
-    int thing = sample_out_temp >> 7;
-    sample_out_temp = thing == 0 ? 0 : (pgm_read_byte(&sine_table[sine_index]) - 127) >> thing;
+    sample_out_temp = ((int)((pgm_read_byte(&sine_table[sine_index]) - 127) * (sample_out_temp / 127.0))) + 127;
     sine_accumulator += 220 << 2;
-    sine_index = (dds_tune * sine_accumulator) >> (32 - 8);
+    sine_index = (dds_tune * sine_accumulator) >> 24;
   }
 
   sample_out_temp = (sample_out_temp >> 1) + 127;
@@ -351,7 +446,7 @@ ISR(TIMER2_COMPA_vect) {
 void enable_record() {
   cli();  // disable interrupt for playback timer
 
-  TIMSK2 |= (0 << OCIE2A);  // disable playback
+  // TIMSK2 |= (0 << OCIE2A);  // disable playback
 
   ADCSRA = 0;  // clear adc "a" register
 
@@ -370,8 +465,10 @@ void enable_record() {
   ADCSRA |= (1 << ADEN);  // enable ADC
   ADCSRA |= (1 << ADSC);  // start ADC measurements
 
-  set_ram_sequential_mode();
-  begin_writing_ram_sequential();
+  if (!passthrough) {
+    set_ram_sequential_mode();
+    begin_writing_ram_sequential();
+  }
 
   digitalWrite(A5, HIGH);  // "recording" LED on
 
@@ -385,15 +482,19 @@ void disable_record() {
   ADCSRA = initial_adcsra;
   ADMUX = initial_admux;
 
-  end_writing_ram_sequential();
-  set_ram_byte_mode();
+  if (!passthrough) {
+    end_writing_ram_sequential();
+    set_ram_byte_mode();
+  }
 
-  TIMSK2 |= (1 << OCIE2A);  // enable playback
+  // TIMSK2 |= (1 << OCIE2A);  // enable playback
 
   digitalWrite(A5, LOW);  // "recording" LED off
 
-  pitch_mod = 1.0;
-  recalculate_pitches();
+  if (!passthrough) {
+    pitch_mod = 1.0;
+    recalculate_pitches();
+  }
 
   sei();
 }
@@ -435,9 +536,9 @@ void loop(void) {
   byte d6 = p & 0b00000001;
   byte d7 = p & 0b00000010;
   byte d8 = pa & 0b00000010;
-  byte d9 = pa & 0b00010000;
-  byte d10 = pa & 0b00000100;
-  byte d11 = pa & 0b00001000;
+  // byte d9 = pa & 0b00010000;
+  // byte d10 = pa & 0b00000100;
+  // byte d11 = pa & 0b00001000;
 
   unsigned long time = millis();
 
@@ -448,7 +549,7 @@ void loop(void) {
 
     if (!states[0]) {
       if (!sf) {
-        if (!states[8]) {
+        if (!states[7]) {
           windows[2] = map(analogRead(A6), 0, 1024, 100, sample_length);
           windows[3] = pitch * (map(analogRead(A7), 0, 1024, windows[2], sample_length) / pitch);
           led_flash(1);
@@ -472,11 +573,11 @@ void loop(void) {
 
     if (!states[1]) {
       if (!sf) {
-        if (!states[8]) {
+        if (!states[7]) {
           windows[4] = map(analogRead(A6), 0, 1024, 100, sample_length);
           windows[5] = pitch * (map(analogRead(A7), 0, 1024, windows[4], sample_length) / pitch);
           led_flash(2);
-        } else {
+        } else if (!am) {
           delay_active = !delay_active;
           delay_buffer_index = 0;
         }
@@ -495,7 +596,7 @@ void loop(void) {
 
     if (!states[2]) {
       if (!sf) {
-        if (!states[8]) {
+        if (!states[7]) {
           windows[6] = map(analogRead(A6), 0, 1024, 100, sample_length);
           windows[7] = pitch * (map(analogRead(A7), 0, 1024, windows[6], sample_length) / pitch);
           led_flash(3);
@@ -517,7 +618,7 @@ void loop(void) {
 
     if (!states[3]) {
       if (!sf) {
-        if (!states[8]) {
+        if (!states[7]) {
           windows[8] = map(analogRead(A6), 0, 1024, 100, sample_length);
           windows[9] = pitch * (map(analogRead(A7), 0, 1024, windows[8], sample_length) / pitch);
           led_flash(4);
@@ -570,6 +671,7 @@ void loop(void) {
     if (!states[5]) {
       if (!sf) {
         am = !am;
+        delay_active = 0;
       } else {
         indexes[5] = windows[reverse ? windex[5] + 1 : windex[5]];
         accumulators[5] = 0;
@@ -584,9 +686,21 @@ void loop(void) {
     states[6] = d6;
 
     if (!states[6]) {
-      indexes[6] = windows[reverse ? windex[6] + 1 : windex[6]];
-      accumulators[6] = 0;
-      assign_note(6);
+      if (!sf) {
+        x4 = !x4;
+
+        if (x4) {
+          pitches = x4_pitches;
+          windex = windex_for_index_x4;
+        } else {
+          pitches = major_or_minor ? minor_pitches : major_pitches;
+          windex = windex_for_index_standard;
+        }
+      } else {
+        indexes[6] = windows[reverse ? windex[6] + 1 : windex[6]];
+        accumulators[6] = 0;
+        assign_note(6);
+      }
     }
   }
 
@@ -596,17 +710,7 @@ void loop(void) {
     states[7] = d7;
 
     if (!states[7]) {
-      if (!sf) {
-        x4 = !x4;
-
-        if (x4) {
-          pitches = x4_pitches;
-          windex = windex_for_index_x4;
-        } else {
-          pitches = standard_pitches;
-          windex = windex_for_index_standard;
-        }
-      } else {
+      if (sf) {  // if NOT function key (active low, remember)
         indexes[7] = windows[reverse ? windex[7] + 1 : windex[7]];
         accumulators[7] = 0;
         assign_note(7);
@@ -620,57 +724,14 @@ void loop(void) {
     states[8] = d8;
 
     if (!states[8]) {
-      if (sf) {  // if function key _isn't_ pressed
-        indexes[8] = windows[reverse ? windex[8] + 1 : windex[8]];
-        accumulators[8] = 0;
-        assign_note(8);
-      }
-    }
-  }
-
-  if (d9 == states[9]) {
-    ld9 = time;
-  } else if (time - ld9 > debounceDelay) {
-    states[9] = d9;
-
-    if (!states[9]) {
-      indexes[9] = windows[reverse ? windex[9] + 1 : windex[9]];
-      accumulators[9] = 0;
-      assign_note(9);
-    }
-  }
-
-  if (d10 == states[10]) {
-    ld10 = time;
-  } else if (time - ld10 > debounceDelay) {
-    states[10] = d10;
-
-    if (!states[10]) {
       if (!sf) {
-        pitch_mod *= 0.5;
-        recalculate_pitches();
+        major_or_minor = !major_or_minor;
+        pitches = major_or_minor ? minor_pitches : major_pitches;
       } else {
-        indexes[10] = windows[reverse ? windex[10] + 1 : windex[10]];
-        accumulators[10] = 0;
-        assign_note(10);
+        pitches = major_or_minor ? minor_shifted_pitches : major_shifted_pitches;
       }
-    }
-  }
-
-  if (d11 == states[11]) {
-    ld11 = time;
-  } else if (time - ld11 > debounceDelay) {
-    states[11] = d11;
-
-    if (!states[11]) {
-      if (!sf) {
-        pitch_mod *= 2;
-        recalculate_pitches();
-      } else {
-        indexes[11] = windows[reverse ? windex[11] + 1 : windex[11]];
-        accumulators[11] = 0;
-        assign_note(11);
-      }
+    } else {
+      pitches = major_or_minor ? minor_pitches : major_pitches;
     }
   }
 
@@ -684,5 +745,15 @@ void loop(void) {
   if (!recording && time % 500 == 0) {
     windows[0] = map(analogRead(A6), 0, 1024, 100, sample_length);
     windows[1] = pitch * (map(analogRead(A7), 0, 1024, windows[0], sample_length) / pitch);
+  }
+
+  if (recording) {
+    if (last_sample == 255 || last_sample == 0) {
+      digitalWrite(A5, LOW);
+      clipped = true;
+    } else if (clipped) {
+      digitalWrite(A5, HIGH);
+      clipped = false;
+    }
   }
 }
