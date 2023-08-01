@@ -240,15 +240,10 @@ void begin_writing_ram_sequential() {
   // by recording we are reseting the sample length (it's destructive)
   // sample_length will be incremented with every successive write
   sample_length = 0;
-
-  // this is a boolean "1"
-  recording = 1;
 }
 
 void end_writing_ram_sequential() {
   digitalWrite(9, HIGH);  // Pull CS of RAM to HIGH to end this interaction
-
-  recording = 0;  // boolean "0"
 }
 
 void update_note_reverse(int8_t index, byte note_index, byte windex) {
@@ -368,7 +363,7 @@ byte passthrough, last_sample, clipped;
 
 ISR(TIMER2_COMPA_vect) {
   sample_out_temp = 0;
-  
+
   // "recording" boolean is set to 1 when recording starts
   // when recording ends, "recording" boolean is set to 0, so the rest of the code in
   // the interrupt will run instead
@@ -380,20 +375,20 @@ ISR(TIMER2_COMPA_vect) {
       last_sample = ADCH;
       write_ram_byte_sequential(last_sample);
     } else {
-      sample_out = ADCH;
+      last_sample = ADCH;
 
-      if (delay_active) sample_out += delay_buffer[delay_buffer_index] - 127;
+      if (delay_active) last_sample += delay_buffer[delay_buffer_index] - 127;
 
       digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
       // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
       // Next three are config...look up them up in the datasheet.
       // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
       // So, use SPI "transfer16" method to send it all as one 16 bit word.
-      SPI.transfer16(0b0111000000000000 | (sample_out << 4));
+      SPI.transfer16(0b0111000000000000 | (last_sample << 4));
       digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
 
       if (delay_active) {
-        delay_buffer[delay_buffer_index] = (sample_out >> 1);
+        delay_buffer[delay_buffer_index] = (last_sample >> 1);
         delay_buffer_index++;
         if (delay_buffer_index == 1000) delay_buffer_index = 0;
       }
@@ -470,6 +465,8 @@ void enable_record() {
     begin_writing_ram_sequential();
   }
 
+  recording = 1;
+
   digitalWrite(A5, HIGH);  // "recording" LED on
 
   sei();
@@ -486,6 +483,8 @@ void disable_record() {
     end_writing_ram_sequential();
     set_ram_byte_mode();
   }
+
+  recording = 0;
 
   // TIMSK2 |= (1 << OCIE2A);  // enable playback
 
@@ -647,13 +646,23 @@ void loop(void) {
 
     if (!states[4]) {
       if (!sf) {
-        boomerang = !boomerang;
-        reverse = 0;
-
-        if (boomerang) {
-          update_note = update_note_boomerang;
+        if (!states[7]) {
+          if (passthrough) {
+            disable_record();
+            passthrough = 0;
+          } else {
+            passthrough = 1;
+            enable_record();
+          }
         } else {
-          update_note = update_note_basic;
+          boomerang = !boomerang;
+          reverse = 0;
+
+          if (boomerang) {
+            update_note = update_note_boomerang;
+          } else {
+            update_note = update_note_basic;
+          }
         }
       } else {
         indexes[4] = windows[reverse ? windex[4] + 1 : windex[4]];
@@ -670,8 +679,13 @@ void loop(void) {
 
     if (!states[5]) {
       if (!sf) {
-        am = !am;
-        delay_active = 0;
+        if (!states[7]) {
+          pitch_mod *= 0.5;
+          recalculate_pitches();
+        } else {
+          am = !am;
+          delay_active = 0;
+        }
       } else {
         indexes[5] = windows[reverse ? windex[5] + 1 : windex[5]];
         accumulators[5] = 0;
@@ -687,14 +701,19 @@ void loop(void) {
 
     if (!states[6]) {
       if (!sf) {
-        x4 = !x4;
-
-        if (x4) {
-          pitches = x4_pitches;
-          windex = windex_for_index_x4;
+        if (!states[7]) {
+          pitch_mod *= 2;
+          recalculate_pitches();
         } else {
-          pitches = major_or_minor ? minor_pitches : major_pitches;
-          windex = windex_for_index_standard;
+          x4 = !x4;
+
+          if (x4) {
+            pitches = x4_pitches;
+            windex = windex_for_index_x4;
+          } else {
+            pitches = major_or_minor ? minor_pitches : major_pitches;
+            windex = windex_for_index_standard;
+          }
         }
       } else {
         indexes[6] = windows[reverse ? windex[6] + 1 : windex[6]];
