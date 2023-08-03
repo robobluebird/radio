@@ -368,31 +368,21 @@ ISR(TIMER2_COMPA_vect) {
   // when recording ends, "recording" boolean is set to 0, so the rest of the code in
   // the interrupt will run instead
   if (recording) {
+    last_sample = ADCH;
 
     if (!passthrough) {
       // in sequential mode the RAM handles updating the address pointer after every write
       // so all we have to do is transfer another byte!
-      last_sample = ADCH;
       write_ram_byte_sequential(last_sample);
-    } else {
-      last_sample = ADCH;
-
-      if (delay_active) last_sample += delay_buffer[delay_buffer_index] - 127;
-
-      digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
-      // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
-      // Next three are config...look up them up in the datasheet.
-      // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
-      // So, use SPI "transfer16" method to send it all as one 16 bit word.
-      SPI.transfer16(0b0111000000000000 | (last_sample << 4));
-      digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
-
-      if (delay_active) {
-        delay_buffer[delay_buffer_index] = (last_sample >> 1);
-        delay_buffer_index++;
-        if (delay_buffer_index == 1000) delay_buffer_index = 0;
-      }
     }
+
+    // digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
+    // // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
+    // // Next three are config...look up them up in the datasheet.
+    // // NEXT 8 are the sample (4 bits on the 4 LSbs of byte 1, 4 bits on the MSbs of byte 2). Last 4 bits are "don't care" bits.
+    // // So, use SPI "transfer16" method to send it all as one 16 bit word.
+    // SPI.transfer16(0b0111000000000000 | (last_sample << 4));
+    // digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
 
     // early return from timer interrupt
     return;
@@ -488,14 +478,16 @@ void disable_record() {
 
   // TIMSK2 |= (1 << OCIE2A);  // enable playback
 
-  digitalWrite(A5, LOW);  // "recording" LED off
-
   if (!passthrough) {
     pitch_mod = 1.0;
     recalculate_pitches();
   }
 
+  digitalWrite(A5, LOW);  // "recording" LED off
+
   sei();
+
+  led_flash(2);
 }
 
 void assign_note(int8_t note_index) {
@@ -505,7 +497,7 @@ void assign_note(int8_t note_index) {
     notes[0] = note_index;
   } else if (notes[1] == -1) {
     notes[1] = note_index;
-  } else if (notes[2] == -1) {
+  } else if (notes[2] == -1 && !continuous) {
     notes[2] = note_index;
   }
 };
@@ -758,6 +750,10 @@ void loop(void) {
     ldf = time;
   } else if (time - ldf > debounceDelay) {
     sf = df;
+
+    if (sf) {
+      if (!states[0]) disable_record(); 
+    }
   }
 
   // only take analogReads when not recording, it won't work when recording because of the adc register configuration
