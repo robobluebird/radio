@@ -12,6 +12,7 @@ const byte sine_table[] PROGMEM = { 128, 131, 134, 137, 140, 143, 146, 149, 152,
                                     2, 3, 4, 5, 5, 6, 7, 9, 10, 11, 12, 14, 15, 17, 18, 20, 21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 44, 47, 49, 52, 54, 57, 59, 62,
                                     65, 67, 70, 73, 76, 79, 82, 85, 88, 90, 93, 97, 100, 103, 106, 109, 112, 115, 118, 121, 124 };
 
+int8_t next_up = -1;
 int8_t notes[3] = { -1, -1, -1 };
 byte states[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 uint16_t indexes[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -34,11 +35,13 @@ byte sf = 1;            // state of function button
 unsigned long ldf = 0;  // last debounce time of function button
 
 // various modes of playback
-// continuous = keep playing samples in a loop
+// ring = keep playing samples in a loop
 // reverse = play backward
-// boomerang = play forward then backward as one unit
+// bounce = play forward then backward as one unit
 // am = like a.m. radio, use amplitude modulation to make the sound
-byte continuous, reverse, boomerang, am, x4, envelope = 0;
+byte echo, ring, reverse, bounce, am, x4, envelope = 0;
+byte echo_buffer[1500] = { 0 };
+uint16_t echo_buffer_index;
 
 // not audio "delay", but button press delay. If a button action happens, wait 50 ms to check the button again
 const unsigned long debounceDelay = 50;
@@ -135,11 +138,6 @@ byte major_or_minor;
 const unsigned long dds_tune = 4294967296 / 8000;  // dds thing for sine playback for A.M. mode, don't worry about it
 
 uint16_t windows[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-
-// Audio "delay"...play back stuff that happened already, in a repeating way, to make a pseudo echo effect
-byte delay_buffer[1500] = { 0 };
-byte delay_active;
-uint16_t delay_buffer_index;
 
 uint16_t sample_length;  // set every time we record, based on how long we record
 byte recording;          // a boolean byte where 0 = false and 1 = true...are we currently recording?
@@ -257,13 +255,18 @@ void update_note_reverse(int8_t index, byte note_index, byte windex) {
   if (indexes[index] < windows[windex]) {
     accumulators[index] = 0;
 
-    if (!(continuous && !states[index])) {
-      notes[note_index] = -1;
+    if (!(ring && !states[index])) {
+      if (next_up != -1) {
+        notes[note_index] = next_up;
+        next_up = -1;
+      } else {
+        notes[note_index] = -1;
+      }
     }
   }
 }
 
-void update_note_boomerang(int8_t index, byte note_index, byte windex) {
+void update_note_bounce(int8_t index, byte note_index, byte windex) {
   accumulators[index] += pitches[index];
 
   if (bds[index]) {
@@ -274,8 +277,13 @@ void update_note_boomerang(int8_t index, byte note_index, byte windex) {
       accumulators[index] = 0;
       bds[index] = 0;
 
-      if (!(continuous && !states[index])) {
-        notes[note_index] = -1;
+      if (!(ring && !states[index])) {
+        if (next_up != -1) {
+          notes[note_index] = next_up;
+          next_up = -1;
+        } else {
+          notes[note_index] = -1;
+        }
       }
     }
   } else {
@@ -297,8 +305,13 @@ void update_note_basic(int8_t index, byte note_index, byte windex) {
   if (indexes[index] > windows[windex + 1]) {
     accumulators[index] = 0;
 
-    if (!(continuous && !states[index])) {
-      notes[note_index] = -1;
+    if (!(ring && !states[index])) {
+      if (next_up != -1) {
+        notes[note_index] = next_up;
+        next_up = -1;
+      } else {
+        notes[note_index] = -1;
+      }
     }
   }
 }
@@ -311,7 +324,13 @@ void update_note_envelope(int8_t index, byte note_index, byte windex) {
   if (states[index]) {
     if (indexes[index] > sample_length) {
       envelope_start_points[note_index] = 0;
-      notes[note_index] = -1;
+
+      if (next_up != -1) {
+        notes[note_index] = next_up;
+        next_up = -1;
+      } else {
+        notes[note_index] = -1;
+      }
     }
   } else if (indexes[index] > windows[windex + 1]) {
     envelope_start_points[note_index] = windows[windex];
@@ -407,7 +426,7 @@ ISR(TIMER2_COMPA_vect) {
   if (notes[1] != -1) update_note(notes[1], 1, windex[notes[1]]);
   if (notes[2] != -1) update_note(notes[2], 2, windex[notes[2]]);
 
-  if (delay_active) sample_out_temp += delay_buffer[delay_buffer_index] - 127;
+  if (echo) sample_out_temp += echo_buffer[echo_buffer_index] - 127;
 
   if (am) {
     sample_out_temp = ((int)((pgm_read_byte(&sine_table[sine_index]) - 127) * (sample_out_temp / 127.0))) + 127;
@@ -427,10 +446,10 @@ ISR(TIMER2_COMPA_vect) {
 
   sample_out = sample_out_temp;
 
-  if (delay_active) {
-    delay_buffer[delay_buffer_index] = (sample_out >> 1);
-    delay_buffer_index++;
-    if (delay_buffer_index == 1500) delay_buffer_index = 0;
+  if (echo) {
+    echo_buffer[echo_buffer_index] = (sample_out >> 1);
+    echo_buffer_index++;
+    if (echo_buffer_index == 1500) echo_buffer_index = 0;
   }
 
   digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
@@ -511,8 +530,10 @@ void assign_note(int8_t note_index) {
     notes[0] = note_index;
   } else if (notes[1] == -1) {
     notes[1] = note_index;
-  } else if (notes[2] == -1 && !continuous && !envelope) {
+  } else if (notes[2] == -1 && !ring && !envelope) {
     notes[2] = note_index;
+  } else {
+    next_up = note_index;
   }
 };
 
@@ -582,10 +603,9 @@ void loop(void) {
           envelope = !envelope;
 
           if (envelope) {
-            continuous = 0;
-            boomerang = 0;
+            ring = 0;
+            bounce = 0;
             reverse = 0;
-            x4 = 0;
             update_note = update_note_envelope;
           } else {
             update_note = update_note_basic;
@@ -610,7 +630,12 @@ void loop(void) {
           windows[7] = pitch * (map(analogRead(A5), 0, 1024, windows[6], sample_length) / pitch);
           led_flash(3);
         } else {
-          continuous = !continuous;
+          ring = !ring;
+
+          if (ring && envelope) {
+            envelope = 0;
+            update_note = update_note_basic;
+          }
         }
       } else {
         accumulators[2] = 0;
@@ -634,9 +659,8 @@ void loop(void) {
           reverse = !reverse;
 
           if (reverse) {
-            boomerang = 0;
+            bounce = 0;
             envelope = 0;
-            x4 = 0;
             update_note = update_note_reverse;
           } else {
             update_note = update_note_basic;
@@ -657,17 +681,16 @@ void loop(void) {
     if (!states[4]) {
       if (!sf) {
         if (!states[7]) {
-          if (delay_active) am = 0;
-          delay_active = !delay_active;
-          delay_buffer_index = 0;
+          if (echo) am = 0;
+          echo = !echo;
+          echo_buffer_index = 0;
         } else {
-          boomerang = !boomerang;
+          bounce = !bounce;
 
-          if (boomerang) {
+          if (bounce) {
             reverse = 0;
             envelope = 0;
-            x4 = 0;
-            update_note = update_note_boomerang;
+            update_note = update_note_bounce;
           } else {
             update_note = update_note_basic;
           }
@@ -691,7 +714,7 @@ void loop(void) {
           recalculate_pitches();
         } else {
           am = !am;
-          delay_active = 0;
+          echo = 0;
         }
       } else {
         accumulators[5] = 0;
@@ -714,7 +737,6 @@ void loop(void) {
           x4 = !x4;
 
           if (x4) {
-            envelope = 0;
             pitches = x4_pitches;
             windex = windex_for_index_x4;
           } else {
