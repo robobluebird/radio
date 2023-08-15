@@ -49,7 +49,7 @@ const unsigned long debounceDelay = 50;
 int sample_out_temp;  // used for gathering currently playing samples, then chopped down to 1 byte
 byte sample_out;      // actual byte delivered to the DAC
 
-byte pitch = 60;
+byte pitch = 64;
 float pitch_mod = 1.0;
 
 float pitch_intervals[13] = {
@@ -69,47 +69,47 @@ float pitch_intervals[13] = {
 };
 
 byte major_pitches[8] = {
+  round(pitch * pitch_intervals[7] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[9] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[11] * 0.5 * pitch_mod),
   round(pitch * pitch_mod),
-  round(pitch *pitch_intervals[2] * pitch_mod),
-  round(pitch *pitch_intervals[4] * pitch_mod),
-  round(pitch *pitch_intervals[5] * pitch_mod),
-  round(pitch *pitch_intervals[7] * pitch_mod),
-  round(pitch *pitch_intervals[9] * pitch_mod),
-  round(pitch *pitch_intervals[11] * pitch_mod),
-  round(pitch *pitch_intervals[12] * pitch_mod)
+  round(pitch * pitch_intervals[2] * pitch_mod),
+  round(pitch * pitch_intervals[4] * pitch_mod),
+  round(pitch * pitch_intervals[5] * pitch_mod),
+  round(pitch * pitch_intervals[7] * pitch_mod)
 };
 
 byte major_shifted_pitches[8] = {
+  round(pitch * pitch_intervals[6] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[8] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[10] * 0.5 * pitch_mod),
   round(pitch * pitch_mod),
-  round(pitch *pitch_intervals[1] * pitch_mod),
-  round(pitch *pitch_intervals[3] * pitch_mod),
-  round(pitch *pitch_intervals[5] * pitch_mod),
-  round(pitch *pitch_intervals[6] * pitch_mod),
-  round(pitch *pitch_intervals[8] * pitch_mod),
-  round(pitch *pitch_intervals[10] * pitch_mod),
-  round(pitch *pitch_intervals[12] * pitch_mod)
+  round(pitch * pitch_intervals[1] * pitch_mod),
+  round(pitch * pitch_intervals[3] * pitch_mod),
+  round(pitch * pitch_intervals[5] * pitch_mod),
+  round(pitch * pitch_intervals[6] * pitch_mod),
 };
 
 byte minor_pitches[8] = {
+  round(pitch * pitch_intervals[7] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[10] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[11] * 0.5 * pitch_mod),
   round(pitch * pitch_mod),
-  round(pitch *pitch_intervals[2] * pitch_mod),
-  round(pitch *pitch_intervals[3] * pitch_mod),
-  round(pitch *pitch_intervals[5] * pitch_mod),
-  round(pitch *pitch_intervals[7] * pitch_mod),
-  round(pitch *pitch_intervals[10] * pitch_mod),
-  round(pitch *pitch_intervals[11] * pitch_mod),
-  round(pitch *pitch_intervals[12] * pitch_mod)
+  round(pitch * pitch_intervals[2] * pitch_mod),
+  round(pitch * pitch_intervals[3] * pitch_mod),
+  round(pitch * pitch_intervals[5] * pitch_mod),
+  round(pitch * pitch_intervals[7] * pitch_mod)
 };
 
 byte minor_shifted_pitches[8] = {
+  round(pitch * pitch_intervals[6] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[8] * 0.5 * pitch_mod),
+  round(pitch * pitch_intervals[9] * 0.5 * pitch_mod),
   round(pitch * pitch_mod),
-  round(pitch *pitch_intervals[1] * pitch_mod),
-  round(pitch *pitch_intervals[4] * pitch_mod),
-  round(pitch *pitch_intervals[5] * pitch_mod),
-  round(pitch *pitch_intervals[6] * pitch_mod),
-  round(pitch *pitch_intervals[8] * pitch_mod),
-  round(pitch *pitch_intervals[9] * pitch_mod),
-  round(pitch *pitch_intervals[12] * pitch_mod)
+  round(pitch * pitch_intervals[1] * pitch_mod),
+  round(pitch * pitch_intervals[4] * pitch_mod),
+  round(pitch * pitch_intervals[5] * pitch_mod),
+  round(pitch * pitch_intervals[6] * pitch_mod),
 };
 
 /**
