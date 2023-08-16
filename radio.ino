@@ -386,7 +386,7 @@ void setup(void) {
   led_flash(1);
 }
 
-byte passthrough, clipping, clipping_counter = 0;
+byte passthrough, clipping, clipping_counter, timed_out = 0;
 
 ISR(TIMER2_COMPA_vect) {
   sample_out_temp = 0;
@@ -401,6 +401,11 @@ ISR(TIMER2_COMPA_vect) {
       // in sequential mode the RAM handles updating the address pointer after every write
       // so all we have to do is transfer another byte!
       write_ram_byte_sequential(sample);
+
+      if (sample_length > 40000) {
+        timed_out = 1;
+        disable_record();
+      }
     } else {
       digitalWrite(10, LOW);  // CS pin for DAC LOW to start transaction
       // MCP4901 DAC "write" instruction is 16 bits. 15th bit (first bit in MSb) is always a 0.
@@ -411,10 +416,15 @@ ISR(TIMER2_COMPA_vect) {
       digitalWrite(10, HIGH);  // CS pin for DAC HIGH to end transaction
     }
 
-    if ((sample == 0 || sample == 255) && !clipping) {
+    if (clipping_counter > 0) {
+      clipping_counter--;
+    } else if (sample < 50 || sample > 204) {
       clipping = 1;
-      clipping_counter = 5000;
+      clipping_counter = 500;
       digitalWrite(LED_PIN, LOW);
+    } else if (clipping) {
+      clipping = 0;
+      digitalWrite(LED_PIN, HIGH);
     }
 
     // early return from timer interrupt
@@ -584,7 +594,13 @@ void loop(void) {
         assign_note(0);
       }
     } else {
-      if (!sf) disable_record();
+      if (!sf) {
+        if (!timed_out) {
+          disable_record();
+        } else {
+          timed_out = 0;
+        }
+      }
     }
   }
 
@@ -781,8 +797,6 @@ void loop(void) {
             passthrough = 1;
             enable_record();
           }
-
-          led_flash(5);
         } else {
           major_or_minor = !major_or_minor;
           pitches = major_or_minor ? minor_pitches : major_pitches;
@@ -809,14 +823,5 @@ void loop(void) {
   if (!recording && time % 500 == 0) {
     windows[0] = map(analogRead(A4), 0, 1024, 100, sample_length);
     windows[1] = pitch * (map(analogRead(A5), 0, 1024, windows[0], sample_length) / pitch);
-  }
-
-  if (clipping) {
-    if (clipping_counter > 0) {
-      clipping_counter--;
-    } else {
-      clipping = 0;
-      digitalWrite(LED_PIN, HIGH);
-    }
   }
 }
