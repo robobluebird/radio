@@ -145,41 +145,41 @@ byte recording;          // a boolean byte where 0 = false and 1 = true...are we
 byte initial_adcsra, initial_admux;  // used to store and restore values of ADC registers before and after recording
 
 void recalculate_pitches() {
-  major_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
-  major_pitches[1] = pitch * pitch_intervals[2] * pitch_mod;
-  major_pitches[2] = pitch * pitch_intervals[4] * pitch_mod;
-  major_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
-  major_pitches[4] = pitch * pitch_intervals[7] * pitch_mod;
-  major_pitches[5] = pitch * pitch_intervals[9] * pitch_mod;
-  major_pitches[6] = pitch * pitch_intervals[11] * pitch_mod;
-  major_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+  major_pitches[0] = pitch * pitch_intervals[7] * 0.5 * pitch_mod;
+  major_pitches[1] = pitch * pitch_intervals[9] * 0.5 * pitch_mod;
+  major_pitches[2] = pitch * pitch_intervals[11] * 0.5 * pitch_mod;
+  major_pitches[3] = pitch * pitch_intervals[0] * pitch_mod;
+  major_pitches[4] = pitch * pitch_intervals[2] * pitch_mod;
+  major_pitches[5] = pitch * pitch_intervals[4] * pitch_mod;
+  major_pitches[6] = pitch * pitch_intervals[5] * pitch_mod;
+  major_pitches[7] = pitch * pitch_intervals[7] * pitch_mod;
 
-  major_shifted_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
-  major_shifted_pitches[1] = pitch * pitch_intervals[1] * pitch_mod;
-  major_shifted_pitches[2] = pitch * pitch_intervals[3] * pitch_mod;
-  major_shifted_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
-  major_shifted_pitches[4] = pitch * pitch_intervals[6] * pitch_mod;
-  major_shifted_pitches[5] = pitch * pitch_intervals[8] * pitch_mod;
-  major_shifted_pitches[6] = pitch * pitch_intervals[10] * pitch_mod;
-  major_shifted_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+  major_shifted_pitches[0] = pitch * pitch_intervals[6] * 0.5 * pitch_mod;
+  major_shifted_pitches[1] = pitch * pitch_intervals[8] * 0.5 * pitch_mod;
+  major_shifted_pitches[2] = pitch * pitch_intervals[10] * 0.5 * pitch_mod;
+  major_shifted_pitches[3] = pitch * pitch_intervals[0] * pitch_mod;
+  major_shifted_pitches[4] = pitch * pitch_intervals[1] * pitch_mod;
+  major_shifted_pitches[5] = pitch * pitch_intervals[2] * pitch_mod;
+  major_shifted_pitches[6] = pitch * pitch_intervals[5] * pitch_mod;
+  major_shifted_pitches[7] = pitch * pitch_intervals[6] * pitch_mod;
 
-  minor_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
-  minor_pitches[1] = pitch * pitch_intervals[2] * pitch_mod;
-  minor_pitches[2] = pitch * pitch_intervals[3] * pitch_mod;
-  minor_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
-  minor_pitches[4] = pitch * pitch_intervals[7] * pitch_mod;
-  minor_pitches[5] = pitch * pitch_intervals[10] * pitch_mod;
-  minor_pitches[6] = pitch * pitch_intervals[11] * pitch_mod;
-  minor_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+  minor_pitches[0] = pitch * pitch_intervals[7] * 0.5 * pitch_mod;
+  minor_pitches[1] = pitch * pitch_intervals[10] * 0.5 * pitch_mod;
+  minor_pitches[2] = pitch * pitch_intervals[11] * 0.5 * pitch_mod;
+  minor_pitches[3] = pitch * pitch_intervals[0] * pitch_mod;
+  minor_pitches[4] = pitch * pitch_intervals[2] * pitch_mod;
+  minor_pitches[5] = pitch * pitch_intervals[3] * pitch_mod;
+  minor_pitches[6] = pitch * pitch_intervals[5] * pitch_mod;
+  minor_pitches[7] = pitch * pitch_intervals[7] * pitch_mod;
 
-  minor_shifted_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
-  minor_shifted_pitches[1] = pitch * pitch_intervals[1] * pitch_mod;
-  minor_shifted_pitches[2] = pitch * pitch_intervals[4] * pitch_mod;
-  minor_shifted_pitches[3] = pitch * pitch_intervals[5] * pitch_mod;
-  minor_shifted_pitches[4] = pitch * pitch_intervals[6] * pitch_mod;
-  minor_shifted_pitches[5] = pitch * pitch_intervals[8] * pitch_mod;
-  minor_shifted_pitches[6] = pitch * pitch_intervals[9] * pitch_mod;
-  minor_shifted_pitches[7] = pitch * pitch_intervals[12] * pitch_mod;
+  minor_shifted_pitches[0] = pitch * pitch_intervals[6] * 0.5 * pitch_mod;
+  minor_shifted_pitches[1] = pitch * pitch_intervals[8] * 0.5 * pitch_mod;
+  minor_shifted_pitches[2] = pitch * pitch_intervals[9] * 0.5 * pitch_mod;
+  minor_shifted_pitches[3] = pitch * pitch_intervals[0] * pitch_mod;
+  minor_shifted_pitches[4] = pitch * pitch_intervals[1] * pitch_mod;
+  minor_shifted_pitches[5] = pitch * pitch_intervals[4] * pitch_mod;
+  minor_shifted_pitches[6] = pitch * pitch_intervals[5] * pitch_mod;
+  minor_shifted_pitches[7] = pitch * pitch_intervals[6] * pitch_mod;
 
   x4_pitches[0] = pitch * pitch_intervals[0] * pitch_mod;
   x4_pitches[1] = pitch * pitch_intervals[7] * pitch_mod;
